@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Penilaian Kinerja Pegawai Dinas Sosial - Error</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 40px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .error-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .error-icon {
+            font-size: 48px;
+            color: #ff4444;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .error-message {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+        .retry-button {
+            background-color: #007acc;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .retry-button:hover {
+            background-color: #005a9e;
+        }
+        .help-section {
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 1px solid #eee;
+            text-align: left;
+        }
+        .help-section h3 {
+            margin-bottom: 15px;
+        }
+        .help-section ul {
+            margin-left: 20px;
+        }
+        .help-section li {
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <div class="error-icon">⚠️</div>
+        <h1>Application Startup Error</h1>
+        <div class="error-message">
+            Dashboard Penilaian Kinerja Pegawai Dinas Sosial failed to start properly. This might be due to a server startup issue or missing dependencies.
+        </div>
+        
+        <button class="retry-button" onclick="window.location.reload()">Retry</button>
+        <button class="retry-button" onclick="require('electron').ipcRenderer.send('restart-app')">Restart Application</button>
+        
+        <div class="help-section">
+            <h3>Troubleshooting Steps:</h3>
+            <ul>
+                <li>Check if another instance of the application is running</li>
+                <li>Ensure you have write permissions to the user data directory</li>
+                <li>Try running the application as administrator (Windows)</li>
+                <li>Check if your antivirus software is blocking the application</li>
+                <li>Verify that the application files are not corrupted</li>
+            </ul>
+            
+            <h3>If the problem persists:</h3>
+            <ul>
+                <li>Check the application logs in the user data directory</li>
+                <li>Try reinstalling the application</li>
+                <li>Contact support with error details</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
