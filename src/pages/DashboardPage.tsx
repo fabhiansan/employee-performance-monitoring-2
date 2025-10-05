@@ -6,9 +6,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
 import { Users, FileText, TrendingUp, Award, Download } from 'lucide-react';
 import { save } from '@tauri-apps/plugin-dialog';
+import {
+  ChartContainer,
+  ChartLegend,
+  ChartTooltip,
+  type ChartConfig,
+} from '@/components/ui/chart';
 
 export function DashboardPage() {
   const { datasetId } = useParams<{ datasetId: string }>();
@@ -65,6 +71,82 @@ export function DashboardPage() {
   }
 
   const exportFeedback = exportError ?? exportMessage;
+
+  const bestCompetency = stats.competency_stats.reduce<DatasetStats['competency_stats'][number] | null>((best, current) => {
+    if (!best || current.average_score > best.average_score) {
+      return current;
+    }
+    return best;
+  }, null);
+
+  const weakestCompetency = stats.competency_stats.reduce<DatasetStats['competency_stats'][number] | null>((worst, current) => {
+    if (!worst || current.average_score < worst.average_score) {
+      return current;
+    }
+    return worst;
+  }, null);
+
+  const mostEvaluatedCompetency = stats.competency_stats.reduce<DatasetStats['competency_stats'][number] | null>((most, current) => {
+    if (!most || current.employee_count > most.employee_count) {
+      return current;
+    }
+    return most;
+  }, null);
+
+  const dominantScoreRange = stats.score_distribution.reduce<DatasetStats['score_distribution'][number] | null>((most, current) => {
+    if (!most || current.count > most.count) {
+      return current;
+    }
+    return most;
+  }, null);
+
+  const insightItems: { title: string; value: string; description: string }[] = [];
+
+  if (bestCompetency) {
+    insightItems.push({
+      title: 'Top Competency',
+      value: bestCompetency.competency.name,
+      description: `Average score ${bestCompetency.average_score.toFixed(2)}`,
+    });
+  }
+
+  if (weakestCompetency) {
+    insightItems.push({
+      title: 'Needs Attention',
+      value: weakestCompetency.competency.name,
+      description: `Average score ${weakestCompetency.average_score.toFixed(2)}`,
+    });
+  }
+
+  if (mostEvaluatedCompetency) {
+    insightItems.push({
+      title: 'Most Assessed',
+      value: mostEvaluatedCompetency.competency.name,
+      description: `${mostEvaluatedCompetency.employee_count} employees evaluated`,
+    });
+  }
+
+  if (dominantScoreRange) {
+    insightItems.push({
+      title: 'Common Rating Band',
+      value: dominantScoreRange.range,
+      description: `${dominantScoreRange.count} employees in this range`,
+    });
+  }
+
+  const scoreDistributionConfig: ChartConfig = {
+    count: {
+      label: 'Employees',
+      color: 'hsl(var(--chart-1))',
+    },
+  };
+
+  const competencyAverageConfig: ChartConfig = {
+    average_score: {
+      label: 'Average Score',
+      color: 'hsl(var(--chart-2))',
+    },
+  };
 
   const handleExport = async (format: 'csv' | 'xlsx' | 'pdf') => {
     if (!datasetId || !isTauri()) return;
@@ -155,6 +237,26 @@ export function DashboardPage() {
         </Card>
       </div>
 
+      {insightItems.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Insights</CardTitle>
+            <CardDescription>Highlights derived from the current dataset</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {insightItems.map((item) => (
+                <div key={item.title} className="rounded-lg border bg-muted/30 p-4">
+                  <p className="text-xs uppercase text-muted-foreground">{item.title}</p>
+                  <p className="mt-2 text-lg font-semibold leading-tight">{item.value}</p>
+                  <p className="text-sm text-muted-foreground">{item.description}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Score Distribution */}
@@ -164,16 +266,18 @@ export function DashboardPage() {
             <CardDescription>Distribution of employee performance ratings</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={stats.score_distribution}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="range" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="count" fill="#3b82f6" name="Employees" />
-              </BarChart>
-            </ResponsiveContainer>
+            <ChartContainer config={scoreDistributionConfig} className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stats.score_distribution}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="range" />
+                  <YAxis allowDecimals={false} />
+                  <ChartTooltip cursor={{ fillOpacity: 0.08 }} />
+                  <ChartLegend />
+                  <Bar dataKey="count" fill="var(--color-count)" name="Employees" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartContainer>
           </CardContent>
         </Card>
 
@@ -184,16 +288,18 @@ export function DashboardPage() {
             <CardDescription>Average scores by competency</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={stats.competency_stats.slice(0, 8)} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" domain={[0, 4]} />
-                <YAxis dataKey="competency.name" type="category" width={120} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="average_score" fill="#10b981" name="Avg Score" />
-              </BarChart>
-            </ResponsiveContainer>
+            <ChartContainer config={competencyAverageConfig} className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stats.competency_stats.slice(0, 8)} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" domain={[0, 4]} />
+                  <YAxis dataKey="competency.name" type="category" width={140} />
+                  <ChartTooltip cursor={{ fillOpacity: 0.08 }} />
+                  <ChartLegend />
+                  <Bar dataKey="average_score" fill="var(--color-average_score)" name="Avg Score" radius={[0, 6, 6, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartContainer>
           </CardContent>
         </Card>
       </div>

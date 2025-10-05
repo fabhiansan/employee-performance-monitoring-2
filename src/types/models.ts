@@ -9,13 +9,13 @@ export interface Dataset {
 
 export interface Employee {
   id: number;
-  dataset_id: number;
   name: string;
   nip: string | null;
   gol: string | null;
   jabatan: string | null;
   sub_jabatan: string | null;
   created_at: string;
+  updated_at: string;
 }
 
 export interface Competency {
@@ -28,6 +28,7 @@ export interface Competency {
 export interface Score {
   id: number;
   employee_id: number;
+  dataset_id: number;
   competency_id: number;
   raw_value: string;
   numeric_value: number | null;
@@ -72,7 +73,6 @@ export interface CreateDataset {
 }
 
 export interface CreateEmployee {
-  dataset_id: number;
   name: string;
   nip?: string;
   gol?: string;
@@ -82,6 +82,7 @@ export interface CreateEmployee {
 
 export interface CreateScore {
   employee_id: number;
+  dataset_id: number;
   competency_id: number;
   raw_value: string;
   numeric_value?: number;
@@ -184,13 +185,13 @@ export interface DatasetComparison {
 
 export interface EmployeeWithStats {
   id: number;
-  dataset_id: number;
   name: string;
   nip: string | null;
   gol: string | null;
   jabatan: string | null;
   sub_jabatan: string | null;
   created_at: string;
+  updated_at: string;
   average_score: number;
   score_count: number;
 }

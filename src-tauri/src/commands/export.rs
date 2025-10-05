@@ -46,17 +46,20 @@ async fn collect_dataset_data(
         .fetch_one(pool)
         .await?;
 
-    let employees =
-        sqlx::query_as::<_, Employee>("SELECT * FROM employees WHERE dataset_id = ? ORDER BY name")
-            .bind(dataset_id)
-            .fetch_all(pool)
-            .await?;
+    let employees = sqlx::query_as::<_, Employee>(
+        "SELECT e.* FROM dataset_employees de
+         JOIN employees e ON e.id = de.employee_id
+         WHERE de.dataset_id = ?
+         ORDER BY e.name",
+    )
+    .bind(dataset_id)
+    .fetch_all(pool)
+    .await?;
 
     let competencies = sqlx::query_as::<_, Competency>(
         "SELECT DISTINCT c.* FROM competencies c
          JOIN scores s ON c.id = s.competency_id
-         JOIN employees e ON s.employee_id = e.id
-         WHERE e.dataset_id = ?
+         WHERE s.dataset_id = ?
          ORDER BY c.display_order, c.name",
     )
     .bind(dataset_id)
@@ -64,6 +67,7 @@ async fn collect_dataset_data(
     .await?;
 
     let score_rows: Vec<(
+        i64,
         i64,
         i64,
         i64,
@@ -76,13 +80,12 @@ async fn collect_dataset_data(
         i32,
     )> = sqlx::query_as(
         "SELECT
-                s.id, s.employee_id, s.competency_id, s.raw_value, s.numeric_value, s.created_at,
+                s.id, s.employee_id, s.dataset_id, s.competency_id, s.raw_value, s.numeric_value, s.created_at,
                 c.id, c.name, c.description, c.display_order
             FROM scores s
             JOIN competencies c ON s.competency_id = c.id
-            JOIN employees e ON s.employee_id = e.id
-            WHERE e.dataset_id = ?
-            ORDER BY e.name, c.display_order, c.name",
+            WHERE s.dataset_id = ?
+            ORDER BY s.employee_id, c.display_order, c.name",
     )
     .bind(dataset_id)
     .fetch_all(pool)
@@ -92,6 +95,7 @@ async fn collect_dataset_data(
     for (
         score_id,
         employee_id,
+        dataset_id,
         competency_id,
         raw_value,
         numeric_value,
@@ -107,6 +111,7 @@ async fn collect_dataset_data(
             score: crate::db::models::Score {
                 id: score_id,
                 employee_id,
+                dataset_id,
                 competency_id,
                 raw_value,
                 numeric_value,

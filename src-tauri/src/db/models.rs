@@ -15,13 +15,13 @@ pub struct Dataset {
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Employee {
     pub id: i64,
-    pub dataset_id: i64,
     pub name: String,
     pub nip: Option<String>,
     pub gol: Option<String>,
     pub jabatan: Option<String>,
     pub sub_jabatan: Option<String>,
     pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -36,6 +36,7 @@ pub struct Competency {
 pub struct Score {
     pub id: i64,
     pub employee_id: i64,
+    pub dataset_id: i64,
     pub competency_id: i64,
     pub raw_value: String,
     pub numeric_value: Option<f64>,
@@ -81,7 +82,6 @@ pub struct CreateDataset {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateEmployee {
-    pub dataset_id: i64,
     pub name: String,
     pub nip: Option<String>,
     pub gol: Option<String>,
@@ -92,9 +92,18 @@ pub struct CreateEmployee {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateScore {
     pub employee_id: i64,
+    pub dataset_id: i64,
     pub competency_id: i64,
     pub raw_value: String,
     pub numeric_value: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct DatasetEmployee {
+    pub dataset_id: i64,
+    pub employee_id: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -13,13 +13,14 @@ pub struct GeneratedSummary {
 #[tauri::command]
 pub async fn generate_employee_summary(
     state: State<'_, AppState>,
+    dataset_id: i64,
     employee_id: i64,
 ) -> Result<GeneratedSummary, String> {
     let db_lock = state.db.lock().await;
     let db = db_lock.as_ref().ok_or("Database not initialized")?;
     let pool = &db.pool;
 
-    let performance = compute_employee_performance(pool, employee_id)
+    let performance = compute_employee_performance(pool, dataset_id, employee_id)
         .await
         .map_err(|e| format!("Failed to generate summary: {}", e))?;
 
@@ -183,6 +184,7 @@ pub async fn save_employee_summary(
 #[tauri::command]
 pub async fn export_employee_summary_pdf(
     state: State<'_, AppState>,
+    dataset_id: i64,
     employee_id: i64,
     file_path: String,
 ) -> Result<(), String> {
@@ -190,7 +192,7 @@ pub async fn export_employee_summary_pdf(
     let db = db_lock.as_ref().ok_or("Database not initialized")?;
     let pool = &db.pool;
 
-    let performance = compute_employee_performance(pool, employee_id)
+    let performance = compute_employee_performance(pool, dataset_id, employee_id)
         .await
         .map_err(|e| format!("Failed to prepare export: {}", e))?;
 

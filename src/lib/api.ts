@@ -121,11 +121,14 @@ export async function listEmployees(
   return browserStorage.listEmployees(datasetId, search, limit, offset);
 }
 
-export async function getEmployeePerformance(employeeId: number): Promise<EmployeePerformance> {
+export async function getEmployeePerformance(
+  datasetId: number,
+  employeeId: number
+): Promise<EmployeePerformance> {
   if (isTauri()) {
-    return invoke('get_employee_performance', { employeeId });
+    return invoke('get_employee_performance', { datasetId, employeeId });
   }
-  return browserStorage.getEmployeePerformance(employeeId);
+  return browserStorage.getEmployeePerformance(datasetId, employeeId);
 }
 
 export async function validateImportData(
@@ -137,11 +140,14 @@ export async function validateImportData(
   return browserStorage.validateImportData(payload);
 }
 
-export async function generateEmployeeSummary(employeeId: number): Promise<GeneratedSummary> {
+export async function generateEmployeeSummary(
+  datasetId: number,
+  employeeId: number
+): Promise<GeneratedSummary> {
   if (isTauri()) {
-    return invoke('generate_employee_summary', { employeeId });
+    return invoke('generate_employee_summary', { datasetId, employeeId });
   }
-  return browserStorage.generateEmployeeSummary(employeeId);
+  return browserStorage.generateEmployeeSummary(datasetId, employeeId);
 }
 
 export async function getEmployeeSummary(employeeId: number): Promise<Summary | null> {
@@ -158,9 +164,13 @@ export async function saveEmployeeSummary(employeeId: number, content: string): 
   return browserStorage.saveEmployeeSummary(employeeId, content);
 }
 
-export async function exportEmployeeSummary(employeeId: number, filePath: string): Promise<void> {
+export async function exportEmployeeSummary(
+  datasetId: number,
+  employeeId: number,
+  filePath: string
+): Promise<void> {
   if (isTauri()) {
-    return invoke('export_employee_summary_pdf', { employeeId, filePath });
+    return invoke('export_employee_summary_pdf', { datasetId, employeeId, filePath });
   }
   throw new Error('Export summary is only available in the desktop application.');
 }

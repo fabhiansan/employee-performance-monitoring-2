@@ -71,6 +71,18 @@ pub struct ImportValidationSummary {
     pub blank_employee_names: Vec<BlankEmployeeNameIssue>,
 }
 
+fn normalize_name(name: &str) -> String {
+    name.trim().to_lowercase()
+}
+
+fn sanitize_optional(value: &Option<String>) -> Option<String> {
+    value
+        .as_ref()
+        .map(|v| v.trim())
+        .filter(|v| !v.is_empty())
+        .map(|v| v.to_string())
+}
+
 #[tauri::command]
 pub async fn import_dataset(
     state: State<'_, AppState>,
@@ -117,27 +129,121 @@ pub async fn import_dataset(
         rating_map.insert(mapping.text_value.clone(), mapping.numeric_value);
     }
 
-    // 3. Insert employees and build name -> id mapping
-    let mut employee_map: HashMap<String, i64> = HashMap::new();
+    // 3. Ensure employees exist as master data and associate with dataset
+    let mut employee_lookup: HashMap<String, i64> = HashMap::new();
+    let mut unique_employee_ids: HashSet<i64> = HashSet::new();
+
     for emp in &request.employees {
-        let employee = sqlx::query_as::<_, Employee>(
+        let normalized = normalize_name(&emp.name);
+        if normalized.is_empty() {
+            return Err("Employee name cannot be blank".to_string());
+        }
+
+        let display_name = emp.name.trim().to_string();
+        let nip = sanitize_optional(&emp.nip);
+        let gol = sanitize_optional(&emp.gol);
+        let jabatan = sanitize_optional(&emp.jabatan);
+        let sub_jabatan = sanitize_optional(&emp.sub_jabatan);
+
+        let employee_id = if let Some(&existing_id) = employee_lookup.get(&normalized) {
+            sqlx::query(
+                r#"
+                UPDATE employees
+                SET name = ?,
+                    nip = COALESCE(?, nip),
+                    gol = COALESCE(?, gol),
+                    jabatan = COALESCE(?, jabatan),
+                    sub_jabatan = COALESCE(?, sub_jabatan),
+                    updated_at = datetime('now')
+                WHERE id = ?
+                "#,
+            )
+            .bind(&display_name)
+            .bind(&nip)
+            .bind(&gol)
+            .bind(&jabatan)
+            .bind(&sub_jabatan)
+            .bind(existing_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| format!("Failed to update employee {}: {}", display_name, e))?;
+
+            existing_id
+        } else {
+            let existing = sqlx::query_as::<_, Employee>(
+                r#"
+                SELECT * FROM employees WHERE lower(name) = ? LIMIT 1
+                "#,
+            )
+            .bind(&normalized)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|e| format!("Failed to lookup employee {}: {}", display_name, e))?;
+
+            if let Some(employee) = existing {
+                sqlx::query(
+                    r#"
+                    UPDATE employees
+                    SET name = ?,
+                        nip = COALESCE(?, nip),
+                        gol = COALESCE(?, gol),
+                        jabatan = COALESCE(?, jabatan),
+                        sub_jabatan = COALESCE(?, sub_jabatan),
+                        updated_at = datetime('now')
+                    WHERE id = ?
+                    "#,
+                )
+                .bind(&display_name)
+                .bind(&nip)
+                .bind(&gol)
+                .bind(&jabatan)
+                .bind(&sub_jabatan)
+                .bind(employee.id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| format!("Failed to update employee {}: {}", display_name, e))?;
+
+                employee.id
+            } else {
+                let employee = sqlx::query_as::<_, Employee>(
+                    r#"
+                    INSERT INTO employees (name, nip, gol, jabatan, sub_jabatan, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                    RETURNING *
+                    "#,
+                )
+                .bind(&display_name)
+                .bind(&nip)
+                .bind(&gol)
+                .bind(&jabatan)
+                .bind(&sub_jabatan)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|e| format!("Failed to create employee {}: {}", display_name, e))?;
+
+                employee.id
+            }
+        };
+
+        employee_lookup.insert(normalized.clone(), employee_id);
+        unique_employee_ids.insert(employee_id);
+
+        sqlx::query(
             r#"
-            INSERT INTO employees (dataset_id, name, nip, gol, jabatan, sub_jabatan, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-            RETURNING *
+            INSERT INTO dataset_employees (dataset_id, employee_id, created_at, updated_at)
+            VALUES (?, ?, datetime('now'), datetime('now'))
+            ON CONFLICT(dataset_id, employee_id)
+            DO UPDATE SET updated_at = datetime('now')
             "#,
         )
         .bind(dataset.id)
-        .bind(&emp.name)
-        .bind(&emp.nip)
-        .bind(&emp.gol)
-        .bind(&emp.jabatan)
-        .bind(&emp.sub_jabatan)
-        .fetch_one(&mut *tx)
+        .bind(employee_id)
+        .execute(&mut *tx)
         .await
-        .map_err(|e| format!("Failed to insert employee {}: {}", emp.name, e))?;
+        .map_err(|e| format!("Failed to link employee {}: {}", display_name, e))?;
 
-        employee_map.insert(emp.name.clone(), employee.id);
+        // Ensure name variations map to the same employee
+        employee_lookup.insert(display_name.to_lowercase(), employee_id);
     }
 
     // 4. Extract unique competencies from scores and insert them
@@ -184,8 +290,10 @@ pub async fn import_dataset(
     // 5. Insert scores
     let mut score_count = 0;
     for score in &request.scores {
-        let employee_id = employee_map
-            .get(&score.employee_name)
+        let normalized = normalize_name(&score.employee_name);
+        let employee_id = employee_lookup
+            .get(&normalized)
+            .or_else(|| employee_lookup.get(&score.employee_name.to_lowercase()))
             .ok_or_else(|| format!("Employee not found: {}", score.employee_name))?;
 
         let competency_id = competency_map
@@ -197,13 +305,15 @@ pub async fn import_dataset(
 
         sqlx::query(
             r#"
-            INSERT INTO scores (employee_id, competency_id, raw_value, numeric_value, created_at)
-            VALUES (?, ?, ?, ?, datetime('now'))
-            ON CONFLICT(employee_id, competency_id) DO UPDATE
-            SET raw_value = excluded.raw_value, numeric_value = excluded.numeric_value
+            INSERT INTO scores (employee_id, dataset_id, competency_id, raw_value, numeric_value, created_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(dataset_id, employee_id, competency_id) DO UPDATE
+            SET raw_value = excluded.raw_value,
+                numeric_value = excluded.numeric_value
             "#,
         )
         .bind(employee_id)
+        .bind(dataset.id)
         .bind(competency_id)
         .bind(&score.value)
         .bind(numeric_value)
@@ -221,7 +331,7 @@ pub async fn import_dataset(
 
     Ok(ImportResult {
         dataset,
-        employee_count: employee_map.len(),
+        employee_count: unique_employee_ids.len(),
         competency_count: competency_map.len(),
         score_count,
     })
@@ -233,22 +343,17 @@ pub async fn get_default_rating_mappings() -> Result<Vec<CreateRatingMapping>, S
         CreateRatingMapping {
             dataset_id: 0, // Will be replaced when actually used
             text_value: "Sangat Baik".to_string(),
-            numeric_value: 4.0,
+            numeric_value: 85.0,
         },
         CreateRatingMapping {
             dataset_id: 0,
             text_value: "Baik".to_string(),
-            numeric_value: 3.0,
+            numeric_value: 75.0,
         },
         CreateRatingMapping {
             dataset_id: 0,
-            text_value: "Cukup".to_string(),
-            numeric_value: 2.0,
-        },
-        CreateRatingMapping {
-            dataset_id: 0,
-            text_value: "Kurang".to_string(),
-            numeric_value: 1.0,
+            text_value: "Kurang Baik".to_string(),
+            numeric_value: 65.0,
         },
     ])
 }

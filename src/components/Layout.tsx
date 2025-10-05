@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { Link, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { BarChart3, FileUp, Users, Home, GitCompare } from 'lucide-react';
+import { FileUp, Users, Home, GitCompare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useDatasets } from '@/lib/dataset-context';
 import {
@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import iconUrl from '@/assets/icon.png';
 
 const navigation = [
   { name: 'Import', href: '/import', icon: FileUp },
@@ -78,7 +79,7 @@ export function Layout() {
       <header className="border-b bg-card sticky top-0 z-10">
         <div className="flex items-center gap-6 px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center gap-3">
-            <BarChart3 className="h-8 w-8 text-primary" />
+            <img src={iconUrl} alt="Employee Performance Analytics" className="h-8 w-8 rounded-md" />
             <div>
               <h1 className="text-xl font-bold">Employee Performance Analytics</h1>
               <p className="text-xs text-muted-foreground">

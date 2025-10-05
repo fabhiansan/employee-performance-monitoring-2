@@ -48,6 +48,9 @@ coverage/
 .AppleDouble
 .LSOverride
 Icon?
+!src-tauri/icons/
+!src-tauri/icons/icon.ico
+!src-tauri/icons/icon.ico
 
 # Tauri (Rust) build outputs
 src-tauri/target/

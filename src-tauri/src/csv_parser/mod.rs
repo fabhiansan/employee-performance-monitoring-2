@@ -1,6 +1,7 @@
 use csv::{ReaderBuilder, StringRecord};
 use encoding_rs::{Encoding, UTF_8, WINDOWS_1252};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;
@@ -106,14 +107,12 @@ impl CsvParser {
             .flexible(true)
             .from_reader(content.as_bytes());
 
-        let headers: Vec<String> = csv_reader
-            .headers()?
-            .iter()
-            .map(|h| Self::clean_field(h))
-            .collect();
+        let header_record = csv_reader.headers()?.clone();
+        let headers: Vec<String> = header_record.iter().map(|h| Self::clean_field(h)).collect();
+        let unique_employee_names = Self::extract_employee_names(&header_record);
 
         let mut rows = Vec::new();
-        let mut employee_count = 0;
+        let mut record_count = 0;
 
         for (idx, result) in csv_reader.records().enumerate() {
             let record = result?;
@@ -123,8 +122,14 @@ impl CsvParser {
                 rows.push(row);
             }
 
-            employee_count += 1;
+            record_count += 1;
         }
+
+        let employee_count = if !unique_employee_names.is_empty() {
+            unique_employee_names.len()
+        } else {
+            record_count
+        };
 
         Ok(CsvPreview {
             headers,
@@ -137,7 +142,19 @@ impl CsvParser {
 
     /// Clean and normalize field values
     pub fn clean_field(field: &str) -> String {
-        field.trim().trim_matches('"').trim().to_string()
+        let trimmed = field.trim().trim_matches('"').trim();
+
+        let mut parts = trimmed.split_whitespace();
+        if let Some(first) = parts.next() {
+            let mut normalized = String::from(first);
+            for part in parts {
+                normalized.push(' ');
+                normalized.push_str(part);
+            }
+            normalized
+        } else {
+            String::new()
+        }
     }
 
     /// Extract employee name from bracketed format: "1. Competency [Employee Name]"
@@ -173,29 +190,58 @@ impl CsvParser {
             .from_reader(content.as_bytes());
 
         let headers = csv_reader.headers()?.clone();
-        let mut employees = Vec::new();
+        let has_structured_employee_columns = headers.iter().any(|h| {
+            let normalized = Self::clean_field(h);
+            normalized.eq_ignore_ascii_case("NAMA")
+                || normalized.eq_ignore_ascii_case("NAME")
+                || normalized.eq_ignore_ascii_case("NAMA PEGAWAI")
+        });
 
-        for result in csv_reader.records() {
-            let record = result?;
+        if has_structured_employee_columns {
+            let mut employees = Vec::new();
 
-            let name = Self::get_field(&record, &headers, &["NAMA", "Name", "Nama"])?;
-            let nip = Self::get_field_opt(&record, &headers, &["NIP", "Nip"]);
-            let gol = Self::get_field_opt(&record, &headers, &["GOL", "Gol", "Golongan"]);
-            let jabatan = Self::get_field_opt(&record, &headers, &["JABATAN", "Jabatan"]);
-            let sub_jabatan = Self::get_field_opt(
-                &record,
-                &headers,
-                &["SUB JABATAN", "Sub Jabatan", "Sub_Jabatan"],
-            );
+            for result in csv_reader.records() {
+                let record = result?;
 
-            employees.push(ParsedEmployee {
-                name: Self::clean_field(&name),
-                nip,
-                gol,
-                jabatan,
-                sub_jabatan,
-            });
+                let name = Self::get_field(&record, &headers, &["NAMA", "Name", "Nama"])?;
+                let nip = Self::get_field_opt(&record, &headers, &["NIP", "Nip"]);
+                let gol = Self::get_field_opt(&record, &headers, &["GOL", "Gol", "Golongan"]);
+                let jabatan = Self::get_field_opt(&record, &headers, &["JABATAN", "Jabatan"]);
+                let sub_jabatan = Self::get_field_opt(
+                    &record,
+                    &headers,
+                    &["SUB JABATAN", "Sub Jabatan", "Sub_Jabatan"],
+                );
+
+                employees.push(ParsedEmployee {
+                    name: Self::clean_field(&name),
+                    nip,
+                    gol,
+                    jabatan,
+                    sub_jabatan,
+                });
+            }
+
+            return Ok(employees);
         }
+
+        let employee_names = Self::extract_employee_names(&headers);
+        if employee_names.is_empty() {
+            return Err(CsvParseError::InvalidFormat(
+                "Unable to detect employee names from CSV headers".to_string(),
+            ));
+        }
+
+        let employees = employee_names
+            .into_iter()
+            .map(|name| ParsedEmployee {
+                name,
+                nip: None,
+                gol: None,
+                jabatan: None,
+                sub_jabatan: None,
+            })
+            .collect();
 
         Ok(employees)
     }
@@ -229,7 +275,8 @@ impl CsvParser {
 
             // Parse each column header to extract competency and employee
             for (idx, header) in headers.iter().enumerate() {
-                if let Some(employee_name) = Self::extract_employee_name(header) {
+                if let Some(raw_employee_name) = Self::extract_employee_name(header) {
+                    let employee_name = Self::clean_field(&raw_employee_name);
                     let competency = header
                         .split('[')
                         .next()
@@ -253,6 +300,22 @@ impl CsvParser {
         }
 
         Ok(scores)
+    }
+
+    fn extract_employee_names(headers: &StringRecord) -> Vec<String> {
+        let mut seen = HashSet::new();
+        let mut names = Vec::new();
+
+        for header in headers.iter() {
+            if let Some(employee_name) = Self::extract_employee_name(header) {
+                let normalized = Self::clean_field(&employee_name);
+                if !normalized.is_empty() && seen.insert(normalized.clone()) {
+                    names.push(normalized);
+                }
+            }
+        }
+
+        names
     }
 
     fn get_field(
@@ -295,6 +358,7 @@ impl CsvParser {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn test_extract_employee_name() {
@@ -308,5 +372,33 @@ mod tests {
         assert_eq!(CsvParser::detect_delimiter("a,b,c"), ',');
         assert_eq!(CsvParser::detect_delimiter("a\tb\tc"), '\t');
         assert_eq!(CsvParser::detect_delimiter("a;b;c"), ';');
+    }
+
+    #[test]
+    fn test_clean_field_normalizes_whitespace() {
+        assert_eq!(CsvParser::clean_field("  Kurang  Baik  "), "Kurang Baik");
+        assert_eq!(CsvParser::clean_field("\tBaik"), "Baik");
+    }
+
+    #[test]
+    fn test_parse_employee_csv_supports_wide_format() {
+        let path = Path::new("../docs/contoh_data_penilaian.csv");
+        let employees = CsvParser::parse_employee_csv(path).expect("Failed to parse employees");
+
+        assert_eq!(employees.len(), 19);
+        assert_eq!(employees[0].name, "GUSNANDA EFFENDI, S.Pd, MM");
+        assert!(employees.iter().all(|emp| emp.nip.is_none()));
+    }
+
+    #[test]
+    fn test_parse_scores_csv_supports_wide_format() {
+        let path = Path::new("../docs/contoh_data_penilaian.csv");
+        let scores = CsvParser::parse_scores_csv(path).expect("Failed to parse scores");
+
+        assert_eq!(scores.len(), 604);
+        let first = &scores[0];
+        assert_eq!(first.employee_name, "GUSNANDA EFFENDI, S.Pd, MM");
+        assert_eq!(first.competency, "1. Inisiatif & Fleksibilitas");
+        assert_eq!(first.value, "Baik");
     }
 }

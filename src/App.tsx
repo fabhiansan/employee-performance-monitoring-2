@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { CheckCircle, Database } from 'lucide-react';
-import iconUrl from '@assets/icon.png';
+import iconUrl from '@/assets/icon.png';
 import { parseEmployeeCSV, parseScoresCSV, importDataset } from '@/lib/api';
 
 type ImportStep = 'select' | 'preview' | 'mapping' | 'importing' | 'complete';

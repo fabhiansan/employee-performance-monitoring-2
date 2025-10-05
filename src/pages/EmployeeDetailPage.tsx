@@ -31,13 +31,13 @@ export function EmployeeDetailPage() {
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!employeeId) return;
+    if (!employeeId || !datasetId) return;
 
     const fetchPerformance = async () => {
       try {
         setLoading(true);
         setError(null);
-        const data = await getEmployeePerformance(parseInt(employeeId));
+        const data = await getEmployeePerformance(parseInt(datasetId), parseInt(employeeId));
         setPerformance(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load employee performance');
@@ -48,10 +48,10 @@ export function EmployeeDetailPage() {
     };
 
     void fetchPerformance();
-  }, [employeeId]);
+  }, [datasetId, employeeId]);
 
   useEffect(() => {
-    if (!employeeId) return;
+    if (!employeeId || !datasetId) return;
 
     const fetchSummary = async () => {
       try {
@@ -73,7 +73,7 @@ export function EmployeeDetailPage() {
     };
 
     void fetchSummary();
-  }, [employeeId]);
+  }, [datasetId, employeeId]);
 
   const getScoreColor = (score: number | null) => {
     if (score === null) return 'bg-gray-100 text-gray-600';
@@ -83,12 +83,12 @@ export function EmployeeDetailPage() {
   };
 
   const handleGenerateSummary = async () => {
-    if (!employeeId) return;
+    if (!employeeId || !datasetId) return;
     try {
       setSummaryLoading(true);
       setSummaryError(null);
       setSummaryMessage(null);
-      const result = await generateEmployeeSummary(parseInt(employeeId));
+      const result = await generateEmployeeSummary(parseInt(datasetId), parseInt(employeeId));
       setSummaryDraft(result.content);
     } catch (err) {
       setSummaryError(err instanceof Error ? err.message : 'Failed to generate summary');
@@ -113,7 +113,7 @@ export function EmployeeDetailPage() {
   };
 
   const handleExportSummary = async () => {
-    if (!employeeId || !isTauri()) return;
+    if (!employeeId || !datasetId || !isTauri()) return;
     try {
       setSummaryLoading(true);
       setSummaryError(null);
@@ -129,13 +129,13 @@ export function EmployeeDetailPage() {
       }
       let latestContent = summaryDraft.trim();
       if (!latestContent) {
-        const generated = await generateEmployeeSummary(parseInt(employeeId));
+        const generated = await generateEmployeeSummary(parseInt(datasetId), parseInt(employeeId));
         setSummaryDraft(generated.content);
         latestContent = generated.content;
       }
       const saved = await saveEmployeeSummary(parseInt(employeeId), latestContent.trim());
       setSummary(saved);
-      await exportEmployeeSummary(parseInt(employeeId), filePath);
+      await exportEmployeeSummary(parseInt(datasetId), parseInt(employeeId), filePath);
       setSummaryMessage('Summary exported to PDF.');
     } catch (err) {
       setSummaryError(err instanceof Error ? err.message : 'Failed to export summary');

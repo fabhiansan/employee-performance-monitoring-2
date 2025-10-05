@@ -84,24 +84,20 @@ pub async fn compute_dataset_stats(
         .await?;
 
     let total_employees: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM employees WHERE dataset_id = ?")
+        sqlx::query_scalar("SELECT COUNT(*) FROM dataset_employees WHERE dataset_id = ?")
             .bind(dataset_id)
             .fetch_one(pool)
             .await?;
 
-    let total_competencies: i64 = sqlx::query_scalar(
-        "SELECT COUNT(DISTINCT competency_id) FROM scores
-         JOIN employees ON scores.employee_id = employees.id
-         WHERE employees.dataset_id = ?",
-    )
-    .bind(dataset_id)
-    .fetch_one(pool)
-    .await?;
+    let total_competencies: i64 =
+        sqlx::query_scalar("SELECT COUNT(DISTINCT competency_id) FROM scores WHERE dataset_id = ?")
+            .bind(dataset_id)
+            .fetch_one(pool)
+            .await?;
 
     let score_stats: (i64, Option<f64>) = sqlx::query_as(
         "SELECT COUNT(*), AVG(numeric_value) FROM scores
-         JOIN employees ON scores.employee_id = employees.id
-         WHERE employees.dataset_id = ? AND scores.numeric_value IS NOT NULL",
+         WHERE dataset_id = ? AND numeric_value IS NOT NULL",
     )
     .bind(dataset_id)
     .fetch_one(pool)
@@ -121,8 +117,7 @@ pub async fn compute_dataset_stats(
             END as range_key,
             COUNT(*) as count
         FROM scores
-        JOIN employees ON scores.employee_id = employees.id
-        WHERE employees.dataset_id = ? AND scores.numeric_value IS NOT NULL
+        WHERE dataset_id = ? AND numeric_value IS NOT NULL
         GROUP BY range_key
         ORDER BY range_key",
     )
@@ -155,8 +150,7 @@ pub async fn compute_dataset_stats(
                 COUNT(DISTINCT s.employee_id) as employee_count
             FROM competencies c
             JOIN scores s ON c.id = s.competency_id
-            JOIN employees e ON s.employee_id = e.id
-            WHERE e.dataset_id = ? AND s.numeric_value IS NOT NULL
+            WHERE s.dataset_id = ? AND s.numeric_value IS NOT NULL
             GROUP BY c.id, c.name, c.description, c.display_order
             ORDER BY c.display_order, c.name",
         )
@@ -193,14 +187,21 @@ pub async fn compute_dataset_stats(
 
 pub async fn compute_employee_performance(
     pool: &SqlitePool,
+    dataset_id: i64,
     employee_id: i64,
 ) -> Result<EmployeePerformance, sqlx::Error> {
-    let employee = sqlx::query_as::<_, Employee>("SELECT * FROM employees WHERE id = ?")
-        .bind(employee_id)
-        .fetch_one(pool)
-        .await?;
+    let employee = sqlx::query_as::<_, Employee>(
+        "SELECT e.* FROM employees e
+         JOIN dataset_employees de ON de.employee_id = e.id
+         WHERE e.id = ? AND de.dataset_id = ?",
+    )
+    .bind(employee_id)
+    .bind(dataset_id)
+    .fetch_one(pool)
+    .await?;
 
     let score_rows: Vec<(
+        i64,
         i64,
         i64,
         i64,
@@ -213,14 +214,15 @@ pub async fn compute_employee_performance(
         i32,
     )> = sqlx::query_as(
         "SELECT
-                s.id, s.employee_id, s.competency_id, s.raw_value, s.numeric_value, s.created_at,
+                s.id, s.employee_id, s.dataset_id, s.competency_id, s.raw_value, s.numeric_value, s.created_at,
                 c.id, c.name, c.description, c.display_order
             FROM scores s
             JOIN competencies c ON s.competency_id = c.id
-            WHERE s.employee_id = ?
+            WHERE s.employee_id = ? AND s.dataset_id = ?
             ORDER BY c.display_order, c.name",
     )
     .bind(employee_id)
+    .bind(dataset_id)
     .fetch_all(pool)
     .await?;
 
@@ -230,6 +232,7 @@ pub async fn compute_employee_performance(
             |(
                 score_id,
                 emp_id,
+                score_dataset_id,
                 comp_id,
                 raw_value,
                 numeric_value,
@@ -243,6 +246,7 @@ pub async fn compute_employee_performance(
                     score: Score {
                         id: score_id,
                         employee_id: emp_id,
+                        dataset_id: score_dataset_id,
                         competency_id: comp_id,
                         raw_value,
                         numeric_value,
@@ -337,12 +341,13 @@ pub async fn list_employees(
 
     let mut employees_query = QueryBuilder::new(
         "SELECT
-            e.id, e.dataset_id, e.name, e.nip, e.gol, e.jabatan, e.sub_jabatan, e.created_at,
+            e.id, e.name, e.nip, e.gol, e.jabatan, e.sub_jabatan, e.created_at, e.updated_at,
             COALESCE(AVG(s.numeric_value), 0.0) as average_score,
             COUNT(s.id) as score_count
-        FROM employees e
-        LEFT JOIN scores s ON e.id = s.employee_id AND s.numeric_value IS NOT NULL
-        WHERE e.dataset_id = ",
+        FROM dataset_employees de
+        JOIN employees e ON e.id = de.employee_id
+        LEFT JOIN scores s ON s.employee_id = e.id AND s.dataset_id = de.dataset_id AND s.numeric_value IS NOT NULL
+        WHERE de.dataset_id = ",
     );
 
     employees_query.push_bind(dataset_id);
@@ -360,7 +365,7 @@ pub async fn list_employees(
     }
 
     employees_query.push(
-        " GROUP BY e.id, e.dataset_id, e.name, e.nip, e.gol, e.jabatan, e.sub_jabatan, e.created_at
+        " GROUP BY e.id, e.name, e.nip, e.gol, e.jabatan, e.sub_jabatan, e.created_at, e.updated_at
           ORDER BY e.name
           LIMIT ",
     );
@@ -370,12 +375,12 @@ pub async fn list_employees(
 
     let employees: Vec<(
         i64,
-        i64,
         String,
         Option<String>,
         Option<String>,
         Option<String>,
         Option<String>,
+        String,
         String,
         f64,
         i64,
@@ -388,17 +393,17 @@ pub async fn list_employees(
     let employees_with_stats: Vec<EmployeeWithStats> = employees
         .into_iter()
         .map(
-            |(id, dataset_id, name, nip, gol, jabatan, sub_jabatan, created_at, avg, count)| {
+            |(id, name, nip, gol, jabatan, sub_jabatan, created_at, updated_at, avg, count)| {
                 EmployeeWithStats {
                     employee: Employee {
                         id,
-                        dataset_id,
                         name,
                         nip,
                         gol,
                         jabatan,
                         sub_jabatan,
                         created_at: created_at.parse().unwrap_or_default(),
+                        updated_at: updated_at.parse().unwrap_or_default(),
                     },
                     average_score: avg,
                     score_count: count,
@@ -407,8 +412,11 @@ pub async fn list_employees(
         )
         .collect();
 
-    let mut count_query =
-        QueryBuilder::new("SELECT COUNT(*) FROM employees e WHERE e.dataset_id = ");
+    let mut count_query = QueryBuilder::new(
+        "SELECT COUNT(*) FROM dataset_employees de
+         JOIN employees e ON e.id = de.employee_id
+         WHERE de.dataset_id = ",
+    );
     count_query.push_bind(dataset_id);
 
     if let Some(search_term) = &search {
@@ -438,13 +446,14 @@ pub async fn list_employees(
 #[tauri::command]
 pub async fn get_employee_performance(
     state: State<'_, AppState>,
+    dataset_id: i64,
     employee_id: i64,
 ) -> Result<EmployeePerformance, String> {
     let db_lock = state.db.lock().await;
     let db = db_lock.as_ref().ok_or("Database not initialized")?;
     let pool = &db.pool;
 
-    compute_employee_performance(pool, employee_id)
+    compute_employee_performance(pool, dataset_id, employee_id)
         .await
         .map_err(|e| format!("Failed to load employee performance: {}", e))
 }
