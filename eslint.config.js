@@ -12,6 +12,7 @@ export default tseslint.config(
       "public",
       "src-tauri/target",
       "src-tauri/gen",
+      "scripts",
       ".claude",
       "eslint.config.js",
       "postcss.config.js",
