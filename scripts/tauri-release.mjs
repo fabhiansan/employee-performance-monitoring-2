@@ -45,17 +45,41 @@ try {
 
   run('pnpm', ['tauri', 'build']);
 
-  const bundleDir = join('src-tauri', 'target', 'release', 'bundle', 'nsis');
+  const bundleRoot = join('src-tauri', 'target', 'release', 'bundle');
+  const platform = process.platform;
+  const candidateDirectories = {
+    win32: [
+      { subdir: 'nsis', match: (name) => name.endsWith('.exe') },
+      { subdir: 'msi', match: (name) => name.endsWith('.msi') }
+    ],
+    darwin: [
+      { subdir: 'dmg', match: (name) => name.endsWith('.dmg') },
+      { subdir: 'macos', match: (name) => name.endsWith('.app') }
+    ],
+    linux: [
+      { subdir: 'appimage', match: (name) => name.endsWith('.AppImage') },
+      { subdir: 'deb', match: (name) => name.endsWith('.deb') },
+      { subdir: 'rpm', match: (name) => name.endsWith('.rpm') }
+    ]
+  };
+
+  const groups = candidateDirectories[platform] ?? Object.values(candidateDirectories).flat();
   let artifact = null;
-  if (existsSync(bundleDir)) {
-    const candidates = readdirSync(bundleDir).filter((file) => file.endsWith('.exe'));
-    if (candidates.length > 0) {
-      artifact = join(bundleDir, candidates[0]);
+
+  for (const { subdir, match } of groups) {
+    const dirPath = join(bundleRoot, subdir);
+    if (!existsSync(dirPath)) continue;
+    const candidate = readdirSync(dirPath)
+      .filter((entry) => match(entry))
+      .map((entry) => join(dirPath, entry))[0];
+    if (candidate && existsSync(candidate)) {
+      artifact = candidate;
+      break;
     }
   }
 
-  if (!artifact || !existsSync(artifact)) {
-    console.error('Windows installer not found after build.');
+  if (!artifact) {
+    console.error(`No distributable artifact found for platform ${platform}.`);
     process.exit(1);
   }
 
