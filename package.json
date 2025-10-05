@@ -10,7 +10,7 @@
     "lint": "eslint . --max-warnings=0",
     "preview": "vite preview",
     "tauri": "tauri",
-    "tauri:build:release": "pnpm tauri build",
+    "tauri:build:release": "pnpm tauri build --bundles nsis",
     "tauri:release": "node scripts/tauri-release.mjs"
   },
   "dependencies": {

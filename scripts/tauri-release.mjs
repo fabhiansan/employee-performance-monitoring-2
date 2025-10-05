@@ -43,7 +43,7 @@ try {
     process.exit(1);
   }
 
-  run('pnpm', ['tauri', 'build']);
+  run('pnpm', ['tauri', 'build', '--bundles', 'nsis']);
 
   const bundleRoot = join('src-tauri', 'target', 'release', 'bundle');
   const platform = process.platform;
