@@ -51,6 +51,7 @@ pub fn run() {
             commands::import::append_dataset_employees,
             commands::import::get_default_rating_mappings,
             commands::import::validate_import_data,
+            commands::analytics::get_overview_stats,
             commands::analytics::get_dataset_stats,
             commands::analytics::list_employees,
             commands::analytics::get_employee_performance,

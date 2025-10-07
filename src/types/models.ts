@@ -211,6 +211,33 @@ export interface DatasetStats {
   competency_stats: CompetencyStats[];
 }
 
+export interface DatasetSummary {
+  dataset: Dataset;
+  total_employees: number;
+  total_competencies: number;
+  total_scores: number;
+  average_score: number;
+}
+
+export interface CompetencyOverview {
+  competency: Competency;
+  average_score: number;
+  dataset_count: number;
+  score_count: number;
+}
+
+export interface DashboardOverview {
+  total_datasets: number;
+  total_employees: number;
+  total_scores: number;
+  total_competencies: number;
+  average_score: number;
+  score_distribution: ScoreDistribution[];
+  top_datasets: DatasetSummary[];
+  recent_datasets: DatasetSummary[];
+  competency_overview: CompetencyOverview[];
+}
+
 export interface CompetencyDelta {
   competency: Competency;
   base_average: number;

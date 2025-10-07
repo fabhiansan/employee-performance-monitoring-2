@@ -6,6 +6,8 @@ import type {
   Score,
   CreateRatingMapping,
   DatasetStats,
+  DashboardOverview,
+  DatasetSummary,
   EmployeeListResult,
   EmployeePerformance,
   ImportResult,
@@ -1192,6 +1194,118 @@ class BrowserStorage {
       average_score: average,
       score_distribution: scoreDistribution,
       competency_stats: competencyStats,
+    };
+  }
+
+  async getDashboardOverview(): Promise<DashboardOverview> {
+    const [datasets, employees, competencies] = await Promise.all([
+      this.listDatasets(),
+      this.getAllEmployees(),
+      this.getAllCompetencies(),
+    ]);
+
+    const scoresStore = await this.getObjectStore('scores');
+    const scores: Score[] = await new Promise((resolve, reject) => {
+      const request = scoresStore.getAll();
+      request.onsuccess = () => resolve(request.result as Score[]);
+      request.onerror = () => reject(new Error(request.error?.message ?? 'Failed to load scores'));
+    });
+
+    const numericScores = scores
+      .map((score) => score.numeric_value)
+      .filter((value): value is number => value !== null);
+
+    const averageScore = numericScores.length > 0
+      ? numericScores.reduce((sum, value) => sum + value, 0) / numericScores.length
+      : 0;
+
+    const scoreDistribution: ScoreDistribution[] = [
+      { range: '0-1', count: numericScores.filter((value) => value < 1).length },
+      { range: '1-2', count: numericScores.filter((value) => value >= 1 && value < 2).length },
+      { range: '2-3', count: numericScores.filter((value) => value >= 2 && value < 3).length },
+      { range: '3-4', count: numericScores.filter((value) => value >= 3 && value < 4).length },
+      { range: '4+', count: numericScores.filter((value) => value >= 4).length },
+    ];
+
+    const datasetStats = await Promise.all(
+      datasets.map((dataset) => this.getDatasetStats(dataset.id))
+    );
+
+    const toSummary = (stats: DatasetStats): DatasetSummary => ({
+      dataset: stats.dataset,
+      total_employees: stats.total_employees,
+      total_competencies: stats.total_competencies,
+      total_scores: stats.total_scores,
+      average_score: stats.average_score,
+    });
+
+    const topDatasets = datasetStats
+      .slice()
+      .sort((a, b) => b.average_score - a.average_score)
+      .slice(0, 5)
+      .map(toSummary);
+
+    const recentDatasets = datasetStats
+      .slice()
+      .sort((a, b) => new Date(b.dataset.created_at).getTime() - new Date(a.dataset.created_at).getTime())
+      .slice(0, 5)
+      .map(toSummary);
+
+    const competencyLookup = new Map<number, Competency>(
+      competencies.map((competency) => [competency.id, competency])
+    );
+
+    const competencyAccumulator = new Map<
+      number,
+      { competency: Competency; numericValues: number[]; datasetIds: Set<number>; scoreCount: number }
+    >();
+
+    scores.forEach((score) => {
+      const competency = competencyLookup.get(score.competency_id);
+      if (!competency) {
+        return;
+      }
+
+      let entry = competencyAccumulator.get(competency.id);
+      if (!entry) {
+        entry = {
+          competency,
+          numericValues: [],
+          datasetIds: new Set<number>(),
+          scoreCount: 0,
+        };
+        competencyAccumulator.set(competency.id, entry);
+      }
+
+      entry.scoreCount += 1;
+      entry.datasetIds.add(score.dataset_id);
+      if (score.numeric_value !== null) {
+        entry.numericValues.push(score.numeric_value);
+      }
+    });
+
+    const competencyOverview = Array.from(competencyAccumulator.values())
+      .map(({ competency, numericValues, datasetIds, scoreCount }) => ({
+        competency,
+        average_score: numericValues.length > 0
+          ? numericValues.reduce((sum, value) => sum + value, 0) / numericValues.length
+          : 0,
+        dataset_count: datasetIds.size,
+        score_count: scoreCount,
+      }))
+      .sort((a, b) => b.average_score - a.average_score)
+      .slice(0, 8);
+
+    return {
+      total_datasets: datasets.length,
+      total_employees: employees.length,
+      total_scores: scores.length,
+      total_competencies: competencies.length,
+      average_score: averageScore,
+      score_distribution: scoreDistribution,
+      top_datasets: topDatasets,
+      recent_datasets: recentDatasets,
+      competency_overview: competencyOverview,
     };
   }
 

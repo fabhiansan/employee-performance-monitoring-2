@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { ImportPage } from './pages/ImportPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { DatasetPage } from './pages/DatasetPage';
 import { EmployeeListPage } from './pages/EmployeeListPage';
 import { EmployeeDetailPage } from './pages/EmployeeDetailPage';
 import { DatasetComparisonPage } from './pages/DatasetComparisonPage';
@@ -21,7 +22,8 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
             <Route index element={<Navigate to="/import" replace />} />
             <Route path="import" element={<ImportPage />} />
             <Route path="data-management" element={<DataManagementPage />} />
-            <Route path="dashboard/:datasetId" element={<DashboardPage />} />
+            <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="datasets/:datasetId" element={<DatasetPage />} />
             <Route path="employees" element={<EmployeeListPage />} />
             <Route path="employees/:datasetId" element={<EmployeeListPage />} />
             <Route path="employees/:datasetId/:employeeId" element={<EmployeeDetailPage />} />

@@ -644,7 +644,7 @@ export function ImportPage() {
 
   const handleViewDashboard = () => {
     if (importResult) {
-      void navigate(`/dashboard/${importResult.dataset.id}`);
+      void navigate(`/datasets/${importResult.dataset.id}`);
     }
   };
 

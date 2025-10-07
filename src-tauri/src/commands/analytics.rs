@@ -2,6 +2,7 @@ use crate::db::models::{Competency, Dataset, Employee, Score};
 use crate::AppState;
 use serde::{Deserialize, Serialize};
 use sqlx::{QueryBuilder, SqlitePool};
+use std::cmp::Ordering;
 use std::str::FromStr;
 use tauri::State;
 use unicode_normalization::UnicodeNormalization;
@@ -28,6 +29,36 @@ pub struct DatasetStats {
     pub average_score: f64,
     pub score_distribution: Vec<ScoreDistribution>,
     pub competency_stats: Vec<CompetencyStats>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DatasetSummary {
+    pub dataset: Dataset,
+    pub total_employees: i64,
+    pub total_competencies: i64,
+    pub total_scores: i64,
+    pub average_score: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompetencyOverview {
+    pub competency: Competency,
+    pub average_score: f64,
+    pub dataset_count: i64,
+    pub score_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DashboardOverview {
+    pub total_datasets: i64,
+    pub total_employees: i64,
+    pub total_scores: i64,
+    pub total_competencies: i64,
+    pub average_score: f64,
+    pub score_distribution: Vec<ScoreDistribution>,
+    pub top_datasets: Vec<DatasetSummary>,
+    pub recent_datasets: Vec<DatasetSummary>,
+    pub competency_overview: Vec<CompetencyOverview>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -437,6 +468,164 @@ pub async fn compute_employee_performance(
         average_score,
         strengths,
         gaps,
+    })
+}
+
+#[tauri::command]
+pub async fn get_overview_stats(state: State<'_, AppState>) -> Result<DashboardOverview, String> {
+    let pool = state.pool.clone();
+
+    let total_datasets: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM datasets")
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| format!("Failed to count datasets: {}", e))?;
+
+    let total_employees: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM employees")
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| format!("Failed to count employees: {}", e))?;
+
+    let total_scores: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scores")
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| format!("Failed to count scores: {}", e))?;
+
+    let total_competencies: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM competencies")
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| format!("Failed to count competencies: {}", e))?;
+
+    let average_score: f64 = sqlx::query_scalar::<_, Option<f64>>(
+        "SELECT AVG(numeric_value) FROM scores WHERE numeric_value IS NOT NULL",
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| format!("Failed to compute average score: {}", e))?
+    .unwrap_or(0.0);
+
+    let distribution_rows: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT
+            CASE
+                WHEN numeric_value < 1 THEN 0
+                WHEN numeric_value < 2 THEN 1
+                WHEN numeric_value < 3 THEN 2
+                WHEN numeric_value < 4 THEN 3
+                ELSE 4
+            END as range_key,
+            COUNT(*) as count
+        FROM scores
+        WHERE numeric_value IS NOT NULL
+        GROUP BY range_key
+        ORDER BY range_key",
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| format!("Failed to compute score distribution: {}", e))?;
+
+    let score_distribution: Vec<ScoreDistribution> = distribution_rows
+        .into_iter()
+        .map(|(range_key, count)| {
+            let range = match range_key {
+                0 => "0-1",
+                1 => "1-2",
+                2 => "2-3",
+                3 => "3-4",
+                _ => "4+",
+            };
+            ScoreDistribution {
+                range: range.to_string(),
+                count,
+            }
+        })
+        .collect();
+
+    let dataset_ids: Vec<i64> =
+        sqlx::query_scalar("SELECT id FROM datasets ORDER BY created_at DESC")
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| format!("Failed to list datasets: {}", e))?;
+
+    let mut dataset_stats: Vec<DatasetStats> = Vec::new();
+    for dataset_id in dataset_ids {
+        let stats = compute_dataset_stats(&pool, dataset_id)
+            .await
+            .map_err(|e| format!("Failed to compute dataset stats: {}", e))?;
+        dataset_stats.push(stats);
+    }
+
+    let mut summaries: Vec<DatasetSummary> = dataset_stats
+        .iter()
+        .map(|stats| DatasetSummary {
+            dataset: stats.dataset.clone(),
+            total_employees: stats.total_employees,
+            total_competencies: stats.total_competencies,
+            total_scores: stats.total_scores,
+            average_score: stats.average_score,
+        })
+        .collect();
+
+    let mut top_datasets = summaries.clone();
+    top_datasets.sort_by(|a, b| {
+        b.average_score
+            .partial_cmp(&a.average_score)
+            .unwrap_or(Ordering::Equal)
+    });
+    top_datasets.truncate(5);
+
+    let mut recent_datasets = summaries.clone();
+    recent_datasets.sort_by(|a, b| b.dataset.created_at.cmp(&a.dataset.created_at));
+    recent_datasets.truncate(5);
+
+    let competency_rows: Vec<(i64, String, Option<String>, i32, Option<f64>, i64, i64)> =
+        sqlx::query_as(
+            "SELECT
+            c.id,
+            c.name,
+            c.description,
+            c.display_order,
+            AVG(s.numeric_value) as avg_score,
+            COUNT(DISTINCT s.dataset_id) as dataset_count,
+            COUNT(s.id) as score_count
+        FROM competencies c
+        JOIN scores s ON s.competency_id = c.id
+        WHERE s.numeric_value IS NOT NULL
+        GROUP BY c.id, c.name, c.description, c.display_order
+        ORDER BY avg_score DESC
+        LIMIT 8",
+        )
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to compute competency overview: {}", e))?;
+
+    let competency_overview: Vec<CompetencyOverview> = competency_rows
+        .into_iter()
+        .map(
+            |(id, name, description, display_order, avg, dataset_count, score_count)| {
+                CompetencyOverview {
+                    competency: Competency {
+                        id,
+                        name,
+                        description,
+                        display_order,
+                    },
+                    average_score: avg.unwrap_or(0.0),
+                    dataset_count,
+                    score_count,
+                }
+            },
+        )
+        .collect();
+
+    Ok(DashboardOverview {
+        total_datasets,
+        total_employees,
+        total_scores,
+        total_competencies,
+        average_score,
+        score_distribution,
+        top_datasets,
+        recent_datasets,
+        competency_overview,
     })
 }
 

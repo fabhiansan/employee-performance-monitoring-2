@@ -8,6 +8,7 @@ import type {
   CreateRatingMapping,
   Employee,
   DatasetStats,
+  DashboardOverview,
   EmployeeListResult,
   EmployeePerformance,
   ImportValidationPayload,
@@ -329,6 +330,13 @@ export async function getDatasetStats(datasetId: number): Promise<DatasetStats> 
     return invoke('get_dataset_stats', { datasetId });
   }
   return browserStorage.getDatasetStats(datasetId);
+}
+
+export async function getDashboardOverview(): Promise<DashboardOverview> {
+  if (isTauri()) {
+    return invoke('get_overview_stats');
+  }
+  return browserStorage.getDashboardOverview();
 }
 
 export async function listEmployees(

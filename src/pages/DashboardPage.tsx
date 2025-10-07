@@ -1,14 +1,13 @@
-import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { getDatasetStats, exportDataset, isTauri } from '@/lib/api';
-import type { DatasetStats } from '@/types/models';
+import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { getDashboardOverview } from '@/lib/api';
+import type { DashboardOverview } from '@/types/models';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
-import { Users, FileText, TrendingUp, Award, Download } from 'lucide-react';
-import { save } from '@tauri-apps/plugin-dialog';
+import { Users, Database, TrendingUp, Award, ArrowUpRight } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   ChartContainer,
   ChartLegend,
@@ -16,34 +15,39 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart';
 
+function formatNumber(value: number): string {
+  return value.toLocaleString('id-ID');
+}
+
 export function DashboardPage() {
-  const { datasetId } = useParams<{ datasetId: string }>();
-  const [stats, setStats] = useState<DatasetStats | null>(null);
+  const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [exportMessage, setExportMessage] = useState<string | null>(null);
-  const [exportError, setExportError] = useState<string | null>(null);
-  const [exportLoading, setExportLoading] = useState(false);
 
   useEffect(() => {
-    if (!datasetId) return;
-
-    const fetchStats = async () => {
+    const loadOverview = async () => {
       try {
         setLoading(true);
         setError(null);
-        const data = await getDatasetStats(parseInt(datasetId));
-        setStats(data);
+        const data = await getDashboardOverview();
+        setOverview(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Gagal memuat statistik');
-        console.error('Failed to load stats:', err);
+        setError(err instanceof Error ? err.message : 'Gagal memuat ringkasan');
+        console.error('Failed to load overview:', err);
       } finally {
         setLoading(false);
       }
     };
 
-    void fetchStats();
-  }, [datasetId]);
+    void loadOverview();
+  }, []);
+
+  const scoreDistributionConfig: ChartConfig = useMemo(() => ({
+    count: {
+      label: 'Pegawai',
+      color: 'hsl(var(--chart-1))',
+    },
+  }), []);
 
   if (loading) {
     return (
@@ -62,288 +66,75 @@ export function DashboardPage() {
     );
   }
 
-  if (error || !stats) {
+  if (error || !overview) {
     return (
       <Alert variant="destructive">
-        <AlertDescription>{error ?? 'Data tidak tersedia'}</AlertDescription>
+        <AlertDescription>{error ?? 'Data ringkasan tidak tersedia'}</AlertDescription>
       </Alert>
     );
   }
 
-  const exportFeedback = exportError ?? exportMessage;
-
-  const bestCompetency = stats.competency_stats.reduce<DatasetStats['competency_stats'][number] | null>((best, current) => {
-    if (!best || current.average_score > best.average_score) {
-      return current;
-    }
-    return best;
-  }, null);
-
-  const weakestCompetency = stats.competency_stats.reduce<DatasetStats['competency_stats'][number] | null>((worst, current) => {
-    if (!worst || current.average_score < worst.average_score) {
-      return current;
-    }
-    return worst;
-  }, null);
-
-  const mostEvaluatedCompetency = stats.competency_stats.reduce<DatasetStats['competency_stats'][number] | null>((most, current) => {
-    if (!most || current.employee_count > most.employee_count) {
-      return current;
-    }
-    return most;
-  }, null);
-
-  const dominantScoreRange = stats.score_distribution.reduce<DatasetStats['score_distribution'][number] | null>((most, current) => {
-    if (!most || current.count > most.count) {
-      return current;
-    }
-    return most;
-  }, null);
-
-  const insightItems: { title: string; value: string; description: string }[] = [];
-
-  if (bestCompetency) {
-    insightItems.push({
-      title: 'Kompetensi Teratas',
-      value: bestCompetency.competency.name,
-      description: `Skor rata-rata ${bestCompetency.average_score.toFixed(2)}`,
-    });
-  }
-
-  if (weakestCompetency) {
-    insightItems.push({
-      title: 'Butuh Perhatian',
-      value: weakestCompetency.competency.name,
-      description: `Skor rata-rata ${weakestCompetency.average_score.toFixed(2)}`,
-    });
-  }
-
-  if (mostEvaluatedCompetency) {
-    insightItems.push({
-      title: 'Paling Banyak Dinilai',
-      value: mostEvaluatedCompetency.competency.name,
-      description: `${mostEvaluatedCompetency.employee_count} pegawai dinilai`,
-    });
-  }
-
-  if (dominantScoreRange) {
-    insightItems.push({
-      title: 'Rentang Peringkat Umum',
-      value: dominantScoreRange.range,
-      description: `${dominantScoreRange.count} pegawai dalam rentang ini`,
-    });
-  }
-
-  const scoreDistributionConfig: ChartConfig = {
-    count: {
-      label: 'Pegawai',
-      color: 'hsl(var(--chart-1))',
+  const keyMetrics = [
+    {
+      title: 'Total Dataset',
+      value: formatNumber(overview.total_datasets),
+      description: 'Kumpulan data kinerja yang tersedia',
+      icon: Database,
     },
-  };
-
-  const competencyChartData = stats.competency_stats.map((stat) => ({
-    ...stat,
-    roundedAverage: Number(stat.average_score.toFixed(2)),
-  }));
-
-  const maxAverageScore = competencyChartData.reduce((max, stat) => (
-    stat.roundedAverage > max ? stat.roundedAverage : max
-  ), 0);
-
-  const competencyAxisMax = maxAverageScore === 0
-    ? 5
-    : Math.ceil(maxAverageScore / 5) * 5;
-
-  const formatAxisNumber = (value: number) => {
-    if (value >= 100) {
-      return value.toLocaleString('id-ID', { maximumFractionDigits: 0 });
-    }
-    if (value >= 10) {
-      return value.toLocaleString('id-ID', { maximumFractionDigits: 1 });
-    }
-    return value.toLocaleString('id-ID', { maximumFractionDigits: 2 });
-  };
-
-  interface CompetencyTickProps {
-    x?: number;
-    y?: number;
-    payload?: {
-      value?: unknown;
-    };
-  }
-
-  const renderCompetencyTick = (props: CompetencyTickProps) => {
-    const { x = 0, y = 0, payload } = props;
-    const rawValue = payload?.value;
-    const valueText = typeof rawValue === 'string'
-      ? rawValue
-      : typeof rawValue === 'number'
-        ? rawValue.toString()
-        : '';
-
-    const words = valueText.split(/\s+/);
-    const lines: string[] = [];
-    let currentLine = '';
-    const maxChars = 24;
-
-    words.forEach((word) => {
-      const prospective = currentLine.length === 0
-        ? word
-        : `${currentLine} ${word}`;
-
-      if (prospective.length > maxChars) {
-        if (currentLine.length > 0) {
-          lines.push(currentLine);
-        }
-        currentLine = word;
-      } else {
-        currentLine = prospective;
-      }
-    });
-
-    if (currentLine.length > 0) {
-      lines.push(currentLine);
-    }
-
-    return (
-      <text x={x} y={y} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize={12}>
-        {lines.map((line, index) => (
-          <tspan key={index} x={x} dy={index === 0 ? 0 : 14}>
-            {line}
-          </tspan>
-        ))}
-      </text>
-    );
-  };
-
-  const competencyAverageConfig: ChartConfig = {
-    roundedAverage: {
-      label: 'Skor Rata-rata',
-      color: 'hsl(var(--chart-2))',
+    {
+      title: 'Total Pegawai',
+      value: formatNumber(overview.total_employees),
+      description: 'Pegawai unik yang terekam',
+      icon: Users,
     },
-  };
-
-  const handleExport = async (format: 'csv' | 'xlsx' | 'pdf') => {
-    if (!datasetId || !isTauri()) return;
-    try {
-      setExportLoading(true);
-      setExportError(null);
-      setExportMessage(null);
-      const extension = format === 'xlsx' ? 'xlsx' : format;
-      const filePath = await save({
-        title: 'Ekspor Dataset',
-        defaultPath: `${stats.dataset.name.replace(/\s+/g, '_').toLowerCase()}.${extension}`,
-        filters: [{ name: extension.toUpperCase(), extensions: [extension] }],
-      });
-      if (!filePath) {
-        setExportLoading(false);
-        return;
-      }
-      await exportDataset(parseInt(datasetId), format, filePath);
-      setExportMessage(`Dataset diekspor sebagai ${extension.toUpperCase()}.`);
-    } catch (err) {
-      setExportError(err instanceof Error ? err.message : 'Gagal mengekspor dataset');
-    } finally {
-      setExportLoading(false);
-    }
-  };
+    {
+      title: 'Kompetensi Dinilai',
+      value: formatNumber(overview.total_competencies),
+      description: 'Kompetensi dari seluruh dataset',
+      icon: Award,
+    },
+    {
+      title: 'Rata-rata Skor',
+      value: overview.average_score.toFixed(2),
+      description: 'Akumulasi rata-rata semua skor',
+      icon: TrendingUp,
+    },
+  ];
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">{stats.dataset.name}</h1>
+        <h1 className="text-3xl font-bold">Dasbor Organisasi</h1>
         <p className="text-muted-foreground mt-1">
-          {stats.dataset.description ?? 'Dasbor analitik kinerja'}
+          Gambaran umum seluruh dataset kinerja pegawai.
         </p>
       </div>
 
-      {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Pegawai</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total_employees}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Di semua kompetensi
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Skor Rata-rata</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.average_score.toFixed(2)}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Peringkat kinerja keseluruhan
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Kompetensi</CardTitle>
-            <Award className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total_competencies}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Keterampilan dinilai
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Skor</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total_scores}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Catatan kinerja
-            </p>
-          </CardContent>
-        </Card>
+        {keyMetrics.map((metric) => (
+          <Card key={metric.title}>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">{metric.title}</CardTitle>
+              <metric.icon className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{metric.value}</div>
+              <p className="text-xs text-muted-foreground mt-1">{metric.description}</p>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      {insightItems.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Wawasan</CardTitle>
-            <CardDescription>Sorotan yang berasal dari dataset saat ini</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {insightItems.map((item) => (
-                <div key={item.title} className="rounded-lg border bg-muted/30 p-4">
-                  <p className="text-xs uppercase text-muted-foreground">{item.title}</p>
-                  <p className="mt-2 text-lg font-semibold leading-tight">{item.value}</p>
-                  <p className="text-sm text-muted-foreground">{item.description}</p>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Score Distribution */}
         <Card>
           <CardHeader>
             <CardTitle>Distribusi Skor</CardTitle>
-            <CardDescription>Distribusi peringkat kinerja pegawai</CardDescription>
+            <CardDescription>Persebaran peringkat kinerja seluruh pegawai</CardDescription>
           </CardHeader>
           <CardContent>
             <ChartContainer config={scoreDistributionConfig} className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stats.score_distribution}>
+                <BarChart data={overview.score_distribution}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="range" />
                   <YAxis allowDecimals={false} />
@@ -356,151 +147,121 @@ export function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Competency Performance */}
         <Card>
           <CardHeader>
-            <CardTitle>Kinerja Kompetensi</CardTitle>
-            <CardDescription>Skor rata-rata berdasarkan kompetensi</CardDescription>
+            <CardTitle>Kompetensi Teratas</CardTitle>
+            <CardDescription>Delapan kompetensi dengan skor rata-rata tertinggi</CardDescription>
           </CardHeader>
           <CardContent>
-            <ChartContainer config={competencyAverageConfig} className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={competencyChartData.slice(0, 8)}
-                  layout="vertical"
-                  margin={{ top: 8, right: 16, bottom: 8, left: 16 }}
-                  barCategoryGap={12}
-                >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis
-                    type="number"
-                    domain={[0, competencyAxisMax]}
-                    tickFormatter={formatAxisNumber}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis
-                    dataKey="competency.name"
-                    type="category"
-                    width={220}
-                    tickLine={false}
-                    axisLine={false}
-                    tick={renderCompetencyTick}
-                  />
-                  <ChartTooltip
-                    cursor={{ fillOpacity: 0.08 }}
-                    formatter={(value: number, name: string) => [
-                      Number(value).toLocaleString('id-ID', { maximumFractionDigits: 2 }),
-                      name,
-                    ]}
-                  />
-                  <ChartLegend />
-                  <Bar
-                    dataKey="roundedAverage"
-                    fill="var(--color-roundedAverage)"
-                    name="Skor Rata-rata"
-                    radius={[0, 6, 6, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartContainer>
+            {overview.competency_overview.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Belum ada kompetensi dengan skor numerik.
+              </p>
+            ) : (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Kompetensi</TableHead>
+                      <TableHead className="text-right">Dataset</TableHead>
+                      <TableHead className="text-right">Total Skor</TableHead>
+                      <TableHead className="text-right">Rata-rata</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {overview.competency_overview.map((item) => (
+                      <TableRow key={item.competency.id}>
+                        <TableCell>{item.competency.name}</TableCell>
+                        <TableCell className="text-right">{formatNumber(item.dataset_count)}</TableCell>
+                        <TableCell className="text-right">{formatNumber(item.score_count)}</TableCell>
+                        <TableCell className="text-right">{item.average_score.toFixed(2)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Competency Details Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Detail Kompetensi</CardTitle>
-          <CardDescription>Rincian kinerja berdasarkan kompetensi</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-md border">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b bg-muted/50">
-                  <th className="p-3 text-left font-medium">Kompetensi</th>
-                  <th className="p-3 text-right font-medium">Skor Rata-rata</th>
-                  <th className="p-3 text-right font-medium">Jumlah Pegawai</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stats.competency_stats.map((stat) => (
-                  <tr key={stat.competency.id} className="border-b last:border-0">
-                    <td className="p-3">{stat.competency.name}</td>
-                    <td className="p-3 text-right">
-                      <span className={`font-semibold ${
-                        stat.average_score >= 3 ? 'text-green-600' :
-                        stat.average_score >= 2 ? 'text-yellow-600' :
-                        'text-red-600'
-                      }`}>
-                        {stat.average_score.toFixed(2)}
-                      </span>
-                    </td>
-                    <td className="p-3 text-right">{stat.employee_count}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Quick Actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Tindakan Cepat</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-4">
-            <Button asChild>
-              <Link to={`/employees/${datasetId}`}>
-                <Users className="mr-2 h-4 w-4" />
-                Lihat Semua Pegawai
-              </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link to="/import">
-                <FileText className="mr-2 h-4 w-4" />
-                Impor Dataset Baru
-              </Link>
-            </Button>
-            {isTauri() && (
-              <>
-                <Button
-                  variant="outline"
-                  disabled={exportLoading}
-                  onClick={() => void handleExport('csv')}
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  Ekspor CSV
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={exportLoading}
-                  onClick={() => void handleExport('xlsx')}
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  Ekspor Excel
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={exportLoading}
-                  onClick={() => void handleExport('pdf')}
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  Ekspor PDF
-                </Button>
-              </>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Dataset Unggulan</CardTitle>
+            <CardDescription>Lima dataset dengan skor rata-rata tertinggi</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {overview.top_datasets.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Belum ada dataset yang dapat ditampilkan.</p>
+            ) : (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Dataset</TableHead>
+                      <TableHead className="text-right">Pegawai</TableHead>
+                      <TableHead className="text-right">Skor</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {overview.top_datasets.map((item) => (
+                      <TableRow key={item.dataset.id}>
+                        <TableCell>
+                          <Link
+                            to={`/datasets/${item.dataset.id}`}
+                            className="flex items-center gap-2 text-foreground hover:text-primary"
+                          >
+                            <span>{item.dataset.name}</span>
+                            <ArrowUpRight className="h-4 w-4" />
+                          </Link>
+                        </TableCell>
+                        <TableCell className="text-right">{formatNumber(item.total_employees)}</TableCell>
+                        <TableCell className="text-right">{item.average_score.toFixed(2)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             )}
-          </div>
-          {exportFeedback && (
-            <Alert className="mt-4" variant={exportError ? 'destructive' : 'default'}>
-              <AlertDescription>{exportFeedback}</AlertDescription>
-            </Alert>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Dataset Terbaru</CardTitle>
+            <CardDescription>Lima dataset terakhir yang ditambahkan</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {overview.recent_datasets.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Belum ada dataset yang ditambahkan.</p>
+            ) : (
+              <ul className="space-y-4">
+                {overview.recent_datasets.map((item) => (
+                  <li key={item.dataset.id} className="flex items-start justify-between gap-4">
+                    <div>
+                      <Link
+                        to={`/datasets/${item.dataset.id}`}
+                        className="text-sm font-medium text-foreground hover:text-primary"
+                      >
+                        {item.dataset.name}
+                      </Link>
+                      {item.dataset.description && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {item.dataset.description}
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground text-right whitespace-nowrap">
+                      {new Date(item.dataset.created_at).toLocaleString('id-ID')}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

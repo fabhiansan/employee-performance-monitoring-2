@@ -13,7 +13,8 @@ import {
 import iconUrl from '@/assets/icon.png';
 
 const navigation = [
-  { name: 'Dasbor', href: '/dashboard', icon: Home, requiresDataset: true },
+  { name: 'Dasbor', href: '/dashboard', icon: Home },
+  { name: 'Dataset', href: '/datasets', icon: Database, requiresDataset: true },
   { name: 'Pegawai', href: '/employees', icon: Users, requiresDataset: false },
   { name: 'Bandingkan', href: '/compare', icon: GitCompare },
   { name: 'Laporan', href: '/report', icon: FileText, requiresDataset: true },
@@ -46,11 +47,11 @@ export function Layout() {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return;
     selectDataset(parsed);
-    const datasetAwarePrefixes = ['/employees', '/dashboard', '/report'];
+    const datasetAwarePrefixes = ['/employees', '/datasets', '/report'];
     const matchedPrefix = datasetAwarePrefixes.find((prefix) =>
       location.pathname.startsWith(prefix)
     );
-    const basePath = matchedPrefix ?? '/dashboard';
+    const basePath = matchedPrefix ?? '/datasets';
     void navigate(`${basePath}/${parsed}`);
   };
 
@@ -58,7 +59,9 @@ export function Layout() {
     return navigation.map((item) => {
       const requiresDataset = Boolean(item.requiresDataset);
       const datasetPath = selectedDatasetId !== null ? `${item.href}/${selectedDatasetId}` : null;
-      const shouldAppendDataset = item.href === '/employees' && datasetPath !== null;
+      const shouldAppendDataset =
+        (item.href === '/employees' || item.href === '/datasets' || item.href === '/report') &&
+        datasetPath !== null;
       const isDisabled = requiresDataset && !selectedDatasetId;
       const targetHref = shouldAppendDataset
         ? datasetPath
@@ -68,9 +71,11 @@ export function Layout() {
 
       const isActive = item.href === '/employees'
         ? location.pathname === item.href || (datasetPath ? location.pathname.startsWith(datasetPath) : false)
-        : requiresDataset && datasetPath
-          ? location.pathname.startsWith(datasetPath)
-          : location.pathname === item.href;
+        : item.href === '/datasets'
+          ? datasetPath ? location.pathname.startsWith(datasetPath) : false
+          : requiresDataset && datasetPath
+            ? location.pathname.startsWith(datasetPath)
+            : location.pathname === item.href;
 
       return {
         ...item,
