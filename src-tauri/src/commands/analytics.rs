@@ -185,11 +185,17 @@ pub async fn compute_dataset_stats(
         .fetch_one(pool)
         .await?;
 
-    let total_employees: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM dataset_employees WHERE dataset_id = ?")
-            .bind(dataset_id)
-            .fetch_one(pool)
-            .await?;
+    let total_employees: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM (
+            SELECT employee_id FROM dataset_employees WHERE dataset_id = ?
+            UNION
+            SELECT employee_id FROM scores WHERE dataset_id = ?
+        ) AS combined",
+    )
+    .bind(dataset_id)
+    .bind(dataset_id)
+    .fetch_one(pool)
+    .await?;
 
     let total_competencies: i64 =
         sqlx::query_scalar("SELECT COUNT(DISTINCT competency_id) FROM scores WHERE dataset_id = ?")
