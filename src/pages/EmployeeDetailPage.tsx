@@ -1,34 +1,23 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import {
-  getEmployeePerformance,
-  generateEmployeeSummary,
-  getEmployeeSummary,
-  saveEmployeeSummary,
-  exportEmployeeSummary,
-  isTauri,
-} from '@/lib/api';
-import type { EmployeePerformance, ScoreWithCompetency, Summary } from '@/types/models';
+import { getEmployeePerformance, listDatasets } from '@/lib/api';
+import type { EmployeePerformance, ScoreWithCompetency } from '@/types/models';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
-import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Legend } from 'recharts';
-import { ArrowLeft, TrendingUp, TrendingDown, User, FileText } from 'lucide-react';
-import { save } from '@tauri-apps/plugin-dialog';
+// removed summary editor textarea
+import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { ChartContainer, ChartTooltip } from '@/components/ui/chart';
+import { ArrowLeft, TrendingUp, TrendingDown, User } from 'lucide-react';
 
 export function EmployeeDetailPage() {
   const { datasetId, employeeId } = useParams<{ datasetId: string; employeeId: string }>();
   const [performance, setPerformance] = useState<EmployeePerformance | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [summary, setSummary] = useState<Summary | null>(null);
-  const [summaryDraft, setSummaryDraft] = useState('');
-  const [summaryLoading, setSummaryLoading] = useState(false);
-  const [summaryMessage, setSummaryMessage] = useState<string | null>(null);
-  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [trend, setTrend] = useState<{ date: string; average_score: number }[]>([]);
 
   useEffect(() => {
     if (!employeeId || !datasetId) return;
@@ -40,7 +29,7 @@ export function EmployeeDetailPage() {
         const data = await getEmployeePerformance(parseInt(datasetId), parseInt(employeeId));
         setPerformance(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load employee performance');
+        setError(err instanceof Error ? err.message : 'Gagal memuat kinerja pegawai');
         console.error('Failed to load performance:', err);
       } finally {
         setLoading(false);
@@ -51,97 +40,42 @@ export function EmployeeDetailPage() {
   }, [datasetId, employeeId]);
 
   useEffect(() => {
-    if (!employeeId || !datasetId) return;
-
-    const fetchSummary = async () => {
+    if (!employeeId) return;
+    let cancelled = false;
+    const loadTrend = async () => {
       try {
-        setSummaryLoading(true);
-        setSummaryError(null);
-        const existing = await getEmployeeSummary(parseInt(employeeId));
-        if (existing) {
-          setSummary(existing);
-          setSummaryDraft(existing.content);
-        } else {
-          setSummary(null);
-          setSummaryDraft('');
+        const all = await listDatasets();
+        const points = await Promise.all(
+          all.map(async (ds) => {
+            try {
+              const perf = await getEmployeePerformance(ds.id, parseInt(employeeId));
+              return { date: ds.created_at, average_score: perf.average_score };
+            } catch {
+              return null;
+            }
+          })
+        );
+        if (!cancelled) {
+          const filtered = points
+            .filter((p): p is { date: string; average_score: number } => p !== null)
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+          setTrend(filtered);
         }
-      } catch (err) {
-        setSummaryError(err instanceof Error ? err.message : 'Failed to load summary');
-      } finally {
-        setSummaryLoading(false);
+      } catch {
+        // ignore trend errors
       }
     };
-
-    void fetchSummary();
-  }, [datasetId, employeeId]);
+    void loadTrend();
+    return () => {
+      cancelled = true;
+    };
+  }, [employeeId]);
 
   const getScoreColor = (score: number | null) => {
     if (score === null) return 'bg-gray-100 text-gray-600';
     if (score >= 3) return 'bg-green-100 text-green-700';
     if (score >= 2) return 'bg-yellow-100 text-yellow-700';
     return 'bg-red-100 text-red-700';
-  };
-
-  const handleGenerateSummary = async () => {
-    if (!employeeId || !datasetId) return;
-    try {
-      setSummaryLoading(true);
-      setSummaryError(null);
-      setSummaryMessage(null);
-      const result = await generateEmployeeSummary(parseInt(datasetId), parseInt(employeeId));
-      setSummaryDraft(result.content);
-    } catch (err) {
-      setSummaryError(err instanceof Error ? err.message : 'Failed to generate summary');
-    } finally {
-      setSummaryLoading(false);
-    }
-  };
-
-  const handleSaveSummary = async () => {
-    if (!employeeId || !summaryDraft.trim()) return;
-    try {
-      setSummaryLoading(true);
-      setSummaryError(null);
-      const saved = await saveEmployeeSummary(parseInt(employeeId), summaryDraft.trim());
-      setSummary(saved);
-      setSummaryMessage('Summary saved successfully.');
-    } catch (err) {
-      setSummaryError(err instanceof Error ? err.message : 'Failed to save summary');
-    } finally {
-      setSummaryLoading(false);
-    }
-  };
-
-  const handleExportSummary = async () => {
-    if (!employeeId || !datasetId || !isTauri()) return;
-    try {
-      setSummaryLoading(true);
-      setSummaryError(null);
-      setSummaryMessage(null);
-      const filePath = await save({
-        title: 'Export Summary',
-        defaultPath: `${performance?.employee.name ?? 'summary'}.pdf`,
-        filters: [{ name: 'PDF', extensions: ['pdf'] }],
-      });
-      if (!filePath) {
-        setSummaryLoading(false);
-        return;
-      }
-      let latestContent = summaryDraft.trim();
-      if (!latestContent) {
-        const generated = await generateEmployeeSummary(parseInt(datasetId), parseInt(employeeId));
-        setSummaryDraft(generated.content);
-        latestContent = generated.content;
-      }
-      const saved = await saveEmployeeSummary(parseInt(employeeId), latestContent.trim());
-      setSummary(saved);
-      await exportEmployeeSummary(parseInt(datasetId), parseInt(employeeId), filePath);
-      setSummaryMessage('Summary exported to PDF.');
-    } catch (err) {
-      setSummaryError(err instanceof Error ? err.message : 'Failed to export summary');
-    } finally {
-      setSummaryLoading(false);
-    }
   };
 
   if (loading) {
@@ -163,11 +97,11 @@ export function EmployeeDetailPage() {
         <Button variant="outline" asChild>
           <Link to={`/employees/${datasetId}`}>
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Employees
+            Kembali ke Pegawai
           </Link>
         </Button>
         <Alert variant="destructive">
-          <AlertDescription>{error ?? 'Employee not found'}</AlertDescription>
+          <AlertDescription>{error ?? 'Pegawai tidak ditemukan'}</AlertDescription>
         </Alert>
       </div>
     );
@@ -193,7 +127,7 @@ export function EmployeeDetailPage() {
           <Button variant="ghost" size="sm" asChild className="mb-2">
             <Link to={`/employees/${datasetId}`}>
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Employees
+              Kembali ke Pegawai
             </Link>
           </Button>
           <div className="flex items-center gap-3">
@@ -203,14 +137,14 @@ export function EmployeeDetailPage() {
             <div>
               <h1 className="text-3xl font-bold">{performance.employee.name}</h1>
               <p className="text-sm text-muted-foreground mt-1">
-                {performance.employee.jabatan ?? 'Employee'} • NIP: {performance.employee.nip ?? 'N/A'}
+                {performance.employee.jabatan ?? 'Pegawai'} • NIP: {performance.employee.nip ?? 'N/A'}
               </p>
             </div>
           </div>
         </div>
         <Card className="w-48">
           <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Average Score</p>
+            <p className="text-sm text-muted-foreground">Skor Rata-rata</p>
             <p className="text-3xl font-bold">{performance.average_score.toFixed(2)}</p>
           </CardContent>
         </Card>
@@ -219,7 +153,7 @@ export function EmployeeDetailPage() {
       {/* Employee Info */}
       <Card>
         <CardHeader>
-          <CardTitle>Employee Information</CardTitle>
+          <CardTitle>Informasi Pegawai</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -244,11 +178,44 @@ export function EmployeeDetailPage() {
       </Card>
 
       {/* Radar Chart and Insights */}
+      {/* Score Over Time */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Skor dari Waktu ke Waktu</CardTitle>
+          <CardDescription>Skor rata-rata berdasarkan waktu pembuatan dataset</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {trend.length > 0 ? (
+            <ChartContainer
+              config={{ average_score: { label: 'Skor Rata-rata', color: 'hsl(var(--primary))' } }}
+              className="h-[260px] w-full"
+            >
+              <ResponsiveContainer>
+                <LineChart data={trend} margin={{ left: 8, right: 8, top: 10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 10 }}
+                    tickFormatter={(v: string) => new Date(v).toLocaleDateString()}
+                  />
+                  <YAxis domain={[0, 4]} tick={{ fontSize: 10 }} width={28} />
+                  <ChartTooltip />
+                  <Line type="monotone" dataKey="average_score" stroke="var(--color-average_score)" dot={false} strokeWidth={1} />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          ) : (
+            <div className="flex items-center justify-center h-[260px] text-muted-foreground">Tidak ada data historis</div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Radar Chart and Insights */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Competency Profile</CardTitle>
-            <CardDescription>Visual representation of performance across competencies</CardDescription>
+            <CardTitle>Profil Kompetensi</CardTitle>
+            <CardDescription>Representasi visual kinerja di seluruh kompetensi</CardDescription>
           </CardHeader>
           <CardContent>
             {radarData.length > 0 ? (
@@ -258,7 +225,7 @@ export function EmployeeDetailPage() {
                   <PolarAngleAxis dataKey="competency" tick={{ fontSize: 12 }} />
                   <PolarRadiusAxis angle={90} domain={[0, 4]} />
                   <Radar
-                    name="Score"
+                    name="Skor"
                     dataKey="value"
                     stroke="#3b82f6"
                     fill="#3b82f6"
@@ -269,7 +236,7 @@ export function EmployeeDetailPage() {
               </ResponsiveContainer>
             ) : (
               <div className="flex items-center justify-center h-[400px] text-muted-foreground">
-                No numeric scores available
+                Tidak ada skor numerik yang tersedia
               </div>
             )}
           </CardContent>
@@ -281,9 +248,9 @@ export function EmployeeDetailPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <TrendingUp className="h-5 w-5 text-green-600" />
-                Strengths
+                Kekuatan
               </CardTitle>
-              <CardDescription>Top performing competencies</CardDescription>
+              <CardDescription>Kompetensi dengan kinerja terbaik</CardDescription>
             </CardHeader>
             <CardContent>
               {performance.strengths.length > 0 ? (
@@ -298,7 +265,7 @@ export function EmployeeDetailPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No strengths identified</p>
+                <p className="text-sm text-muted-foreground">Tidak ada kekuatan yang teridentifikasi</p>
               )}
             </CardContent>
           </Card>
@@ -307,9 +274,9 @@ export function EmployeeDetailPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <TrendingDown className="h-5 w-5 text-red-600" />
-                Development Areas
+                Area Pengembangan
               </CardTitle>
-              <CardDescription>Areas for improvement</CardDescription>
+              <CardDescription>Area untuk perbaikan</CardDescription>
             </CardHeader>
             <CardContent>
               {performance.gaps.length > 0 ? (
@@ -324,84 +291,29 @@ export function EmployeeDetailPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No gaps identified</p>
+                <p className="text-sm text-muted-foreground">Tidak ada kesenjangan yang teridentifikasi</p>
               )}
             </CardContent>
           </Card>
         </div>
       </div>
 
-      {/* Summary */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Performance Summary
-          </CardTitle>
-          <CardDescription>
-            Generate, refine, and export the narrative summary for this employee.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {summaryError && (
-            <Alert variant="destructive">
-              <AlertDescription>{summaryError}</AlertDescription>
-            </Alert>
-          )}
-          {summaryMessage && (
-            <Alert>
-              <AlertDescription>{summaryMessage}</AlertDescription>
-            </Alert>
-          )}
-          <Textarea
-            value={summaryDraft}
-            onChange={event => {
-              setSummaryDraft(event.target.value);
-              setSummaryMessage(null);
-            }}
-            placeholder="Generate a summary to get started or edit the existing narrative."
-            className="min-h-[180px]"
-            disabled={summaryLoading}
-          />
-          <div className="flex flex-wrap items-center gap-3">
-            <Button onClick={() => void handleGenerateSummary()} disabled={summaryLoading} variant="outline">
-              Generate Summary
-            </Button>
-            <Button onClick={() => void handleSaveSummary()} disabled={summaryLoading || !summaryDraft.trim()}>
-              Save Summary
-            </Button>
-            {isTauri() && (
-              <Button
-                onClick={() => void handleExportSummary()}
-                disabled={summaryLoading || !summaryDraft.trim()}
-                variant="secondary"
-              >
-                Export as PDF
-              </Button>
-            )}
-            {summary && (
-              <span className="text-xs text-muted-foreground">
-                Last updated {new Date(summary.updated_at).toLocaleString()}
-              </span>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      {/* Summary section removed as requested */}
 
       {/* Competency Scores Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Detailed Scores</CardTitle>
-          <CardDescription>Complete breakdown of competency assessments</CardDescription>
+          <CardTitle>Skor Terperinci</CardTitle>
+          <CardDescription>Rincian lengkap penilaian kompetensi</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="rounded-md border">
             <table className="w-full">
               <thead>
                 <tr className="border-b bg-muted/50">
-                  <th className="p-3 text-left font-medium">Competency</th>
-                  <th className="p-3 text-center font-medium">Raw Value</th>
-                  <th className="p-3 text-center font-medium">Numeric Score</th>
+                  <th className="p-3 text-left font-medium">Kompetensi</th>
+                  <th className="p-3 text-center font-medium">Nilai Mentah</th>
+                  <th className="p-3 text-center font-medium">Skor Numerik</th>
                 </tr>
               </thead>
               <tbody>

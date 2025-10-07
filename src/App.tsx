@@ -1,7 +1,14 @@
 import { useState } from 'react';
 import { FileImport } from './components/FileImport';
 import { RatingMappingConfig } from './components/RatingMappingConfig';
-import type { CSVPreview, CreateRatingMapping, ImportResult, ParsedEmployee, ParsedScore } from './types/models';
+import type {
+  CSVPreview,
+  CreateRatingMapping,
+  ImportResult,
+  ParsedEmployee,
+  ParsedScore,
+  EmployeeImportResult,
+} from './types/models';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -9,45 +16,97 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { CheckCircle, Database } from 'lucide-react';
 import iconUrl from '@/assets/icon.png';
-import { parseEmployeeCSV, parseScoresCSV, importDataset } from '@/lib/api';
+import {
+  parseEmployeeCSV,
+  parseScoresCSV,
+  importEmployees,
+  importPerformanceDataset,
+} from '@/lib/api';
 
 type ImportStep = 'select' | 'preview' | 'mapping' | 'importing' | 'complete';
 
 function App() {
   const [step, setStep] = useState<ImportStep>('select');
-  const [preview, setPreview] = useState<CSVPreview | null>(null);
-  const [filePath, setFilePath] = useState<string | File | null>(null);
+  const [employeePreview, setEmployeePreview] = useState<CSVPreview | null>(null);
+  const [performancePreview, setPerformancePreview] = useState<CSVPreview | null>(null);
+  const [employeeFile, setEmployeeFile] = useState<File | string | null>(null);
+  const [performanceFile, setPerformanceFile] = useState<File | string | null>(null);
+  const [employeeFileKey, setEmployeeFileKey] = useState(0);
+  const [performanceFileKey, setPerformanceFileKey] = useState(0);
   const [employees, setEmployees] = useState<ParsedEmployee[]>([]);
   const [scores, setScores] = useState<ParsedScore[]>([]);
   const [uniqueScoreValues, setUniqueScoreValues] = useState<string[]>([]);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [employeeImportSummary, setEmployeeImportSummary] = useState<EmployeeImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
 
-  const handleFileSelected = (path: string | File, csvPreview: CSVPreview) => {
-    setFilePath(path);
-    setPreview(csvPreview);
+  const resetImportState = () => {
+    setEmployees([]);
+    setScores([]);
+    setUniqueScoreValues([]);
+    setImportResult(null);
+    setEmployeeImportSummary(null);
+    setProgress(0);
+  };
+
+  const handleEmployeeFileSelected = (file: string | File, csvPreview: CSVPreview) => {
+    resetImportState();
+    setEmployeeFile(file);
+    setEmployeePreview(csvPreview);
+    setError(null);
+    setStep('select');
+  };
+
+  const handleEmployeeFileCleared = () => {
+    resetImportState();
+    setEmployeeFile(null);
+    setEmployeePreview(null);
+    setEmployeeFileKey((key) => key + 1);
+    setError(null);
+    setStep('select');
+  };
+
+  const handlePerformanceFileSelected = (file: string | File, csvPreview: CSVPreview) => {
+    resetImportState();
+    setPerformanceFile(file);
+    setPerformancePreview(csvPreview);
+    setError(null);
+    setStep('select');
+  };
+
+  const handlePerformanceFileCleared = () => {
+    resetImportState();
+    setPerformanceFile(null);
+    setPerformancePreview(null);
+    setPerformanceFileKey((key) => key + 1);
+    setError(null);
+    setStep('select');
+  };
+
+  const handleProceedToPreview = () => {
+    if (!employeePreview || !performancePreview) {
+      return;
+    }
+    setError(null);
     setStep('preview');
   };
 
   const handleContinueImport = async () => {
-    if (!filePath) return;
+    if (!employeeFile || !performanceFile) return;
 
     try {
       setError(null);
       setProgress(10);
 
-      // Parse employees and scores from CSV
-      const [parsedEmployees, parsedScores] = await Promise.all([
-        parseEmployeeCSV(filePath),
-        parseScoresCSV(filePath),
-      ]);
+      const parsedEmployees = await parseEmployeeCSV(employeeFile);
+      setProgress(25);
+      const parsedScores = await parseScoresCSV(performanceFile);
 
-      setProgress(30);
+      setProgress(40);
       setEmployees(parsedEmployees);
       setScores(parsedScores);
 
-      // Extract unique score values for mapping
       const uniqueValues = Array.from(new Set(parsedScores.map(s => s.value)));
       setUniqueScoreValues(uniqueValues);
 
@@ -60,21 +119,31 @@ function App() {
   };
 
   const handleMappingComplete = async (mappings: CreateRatingMapping[]) => {
-    if (!filePath) return;
+    if (!performanceFile) return;
 
     try {
       setError(null);
       setStep('importing');
       setProgress(60);
+      setEmployeeImportSummary(null);
 
       const datasetName = `Import ${new Date().toLocaleString()}`;
-      const fileName = filePath instanceof File ? filePath.name : filePath.split('/').pop();
-      const sourceFile = filePath instanceof File ? filePath.name : filePath;
-      const result = await importDataset({
+      const fileName = performanceFile instanceof File
+        ? performanceFile.name
+        : performanceFile.split('/').pop();
+      const sourceFile = performanceFile instanceof File ? performanceFile.name : performanceFile;
+      const employeeImport = await importEmployees({ employees });
+      setEmployeeImportSummary(employeeImport);
+
+      setProgress(75);
+
+      const result = await importPerformanceDataset({
         dataset_name: datasetName,
         dataset_description: `Imported from ${fileName}`,
         source_file: sourceFile,
-        employees,
+        employee_names: employees
+          .map(employee => employee.name.trim())
+          .filter(name => name.length > 0),
         scores,
         rating_mappings: mappings,
       });
@@ -83,7 +152,7 @@ function App() {
       setImportResult(result);
       setStep('complete');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to import dataset');
+      setError(err instanceof Error ? err.message : 'Failed to import data');
       setStep('mapping');
       console.error('Import error:', err);
     }
@@ -91,14 +160,14 @@ function App() {
 
   const handleStartOver = () => {
     setStep('select');
-    setPreview(null);
-    setFilePath(null);
-    setEmployees([]);
-    setScores([]);
-    setUniqueScoreValues([]);
-    setImportResult(null);
+    setEmployeePreview(null);
+    setPerformancePreview(null);
+    setEmployeeFile(null);
+    setPerformanceFile(null);
+    setEmployeeFileKey((key) => key + 1);
+    setPerformanceFileKey((key) => key + 1);
+    resetImportState();
     setError(null);
-    setProgress(0);
   };
 
   return (
@@ -106,13 +175,13 @@ function App() {
       <header className="border-b bg-card">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center gap-4">
-            <img src={iconUrl} alt="Employee Performance Analytics" className="h-12 w-12 rounded-md" />
+            <img src={iconUrl} alt="Analitik Kinerja Pegawai" className="h-12 w-12 rounded-md" />
             <div>
               <h1 className="text-2xl font-bold">
-                Employee Performance Analytics
+                Analitik Kinerja Pegawai
               </h1>
               <p className="text-sm text-muted-foreground mt-1">
-                Import, analyze, and manage employee performance data
+                Impor, analisis, dan kelola data kinerja pegawai
               </p>
             </div>
           </div>
@@ -130,77 +199,167 @@ function App() {
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Get Started</CardTitle>
+                <CardTitle>Impor Berkas Data</CardTitle>
                 <CardDescription>
-                  Import your employee data CSV file to begin analyzing performance metrics.
+                  Sediakan file CSV terpisah untuk data induk pegawai dan skor kinerja.
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <FileImport onFileSelected={(path, preview) => {
-                  handleFileSelected(path, preview);
-                }} />
+              <CardContent className="space-y-8">
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Data Induk Pegawai</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Unggah daftar resmi pegawai (nama, NIP, jabatan, sub-jabatan).
+                  </p>
+                  <FileImport
+                    key={employeeFileKey}
+                    onFileSelected={handleEmployeeFileSelected}
+                    onFileCleared={handleEmployeeFileCleared}
+                    title="Employee CSV"
+                    description="Select the employee master data file"
+                  />
+                </div>
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Data Kinerja Pegawai</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Unggah skor kinerja yang merujuk pada pegawai berdasarkan nama.
+                  </p>
+                  <FileImport
+                    key={performanceFileKey}
+                    onFileSelected={handlePerformanceFileSelected}
+                    onFileCleared={handlePerformanceFileCleared}
+                    title="Performance CSV"
+                    description="Select the performance data file"
+                  />
+                </div>
+                <div className="flex justify-end gap-4">
+                  <Button variant="outline" onClick={handleStartOver}>
+                    Hapus Pilihan
+                  </Button>
+                  <Button onClick={handleProceedToPreview} disabled={!employeePreview || !performancePreview}>
+                    Tinjau Berkas
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </div>
         )}
 
-        {step === 'preview' && preview && (
+        {step === 'preview' && employeePreview && performancePreview && (
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>File Preview</CardTitle>
+                <CardTitle>Tinjau Berkas Terpilih</CardTitle>
+                <CardDescription>
+                  Konfirmasikan struktur yang terdeteksi sebelum memetakan nilai kinerja.
+                </CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="mb-6 grid grid-cols-3 gap-4">
-                  <Card>
-                    <CardContent className="pt-6">
-                      <p className="text-sm text-muted-foreground">Employees Detected</p>
-                      <p className="text-2xl font-semibold">{preview.employee_count}</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="pt-6">
-                      <p className="text-sm text-muted-foreground">Delimiter</p>
-                      <p className="text-2xl font-semibold">
-                        {preview.detected_delimiter === ',' ? 'Comma' : preview.detected_delimiter === '\t' ? 'Tab' : preview.detected_delimiter}
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="pt-6">
-                      <p className="text-sm text-muted-foreground">Encoding</p>
-                      <p className="text-2xl font-semibold">{preview.encoding}</p>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <div className="rounded-md border overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        {preview.headers.map((header, idx) => (
-                          <TableHead key={idx}>{header}</TableHead>
-                        ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {preview.rows.map((row, rowIdx) => (
-                        <TableRow key={rowIdx}>
-                          {row.map((cell, cellIdx) => (
-                            <TableCell key={cellIdx}>{cell}</TableCell>
+              <CardContent className="space-y-8">
+                <section className="space-y-4">
+                  <h3 className="text-lg font-semibold">Data Induk Pegawai</h3>
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <Card>
+                      <CardContent className="pt-6">
+                        <p className="text-sm text-muted-foreground">Pegawai Terdeteksi</p>
+                        <p className="text-2xl font-semibold">{employeePreview.employee_count}</p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="pt-6">
+                        <p className="text-sm text-muted-foreground">Delimiter</p>
+                        <p className="text-2xl font-semibold">
+                          {employeePreview.detected_delimiter === ','
+                            ? 'Comma'
+                            : employeePreview.detected_delimiter === '\t'
+                              ? 'Tab'
+                              : employeePreview.detected_delimiter}
+                        </p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="pt-6">
+                        <p className="text-sm text-muted-foreground">Encoding</p>
+                        <p className="text-2xl font-semibold">{employeePreview.encoding}</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+                  <div className="rounded-md border overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          {employeePreview.headers.map((header, idx) => (
+                            <TableHead key={idx}>{header}</TableHead>
                           ))}
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                      </TableHeader>
+                      <TableBody>
+                        {employeePreview.rows.map((row, rowIdx) => (
+                          <TableRow key={`employee-${rowIdx}`}>
+                            {row.map((cell, cellIdx) => (
+                              <TableCell key={cellIdx}>{cell}</TableCell>
+                            ))}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </section>
 
-                <div className="mt-6 flex gap-4">
-                  <Button variant="outline" onClick={handleStartOver}>
-                    Cancel
+                <section className="space-y-4">
+                  <h3 className="text-lg font-semibold">Data Kinerja Pegawai</h3>
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <Card>
+                      <CardContent className="pt-6">
+                        <p className="text-sm text-muted-foreground">Baris Terdeteksi</p>
+                        <p className="text-2xl font-semibold">{performancePreview.rows.length}</p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="pt-6">
+                        <p className="text-sm text-muted-foreground">Delimiter</p>
+                        <p className="text-2xl font-semibold">
+                          {performancePreview.detected_delimiter === ','
+                            ? 'Comma'
+                            : performancePreview.detected_delimiter === '\t'
+                              ? 'Tab'
+                              : performancePreview.detected_delimiter}
+                        </p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="pt-6">
+                        <p className="text-sm text-muted-foreground">Encoding</p>
+                        <p className="text-2xl font-semibold">{performancePreview.encoding}</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+                  <div className="rounded-md border overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          {performancePreview.headers.map((header, idx) => (
+                            <TableHead key={idx}>{header}</TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {performancePreview.rows.map((row, rowIdx) => (
+                          <TableRow key={`performance-${rowIdx}`}>
+                            {row.map((cell, cellIdx) => (
+                              <TableCell key={cellIdx}>{cell}</TableCell>
+                            ))}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </section>
+
+                <div className="flex gap-4">
+                  <Button variant="outline" onClick={() => setStep('select')}>
+                    Kembali
                   </Button>
                   <Button onClick={() => void handleContinueImport()}>
-                    Continue to Mapping
+                    Lanjutkan ke Pemetaan
                   </Button>
                 </div>
               </CardContent>
@@ -234,38 +393,54 @@ function App() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <CheckCircle className="h-6 w-6 text-green-600" />
-                  Import Successful
+                  Impor Berhasil
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-3 gap-4 mb-6">
                   <Card>
                     <CardContent className="pt-6">
-                      <p className="text-sm text-muted-foreground">Employees Imported</p>
+                      <p className="text-sm text-muted-foreground">Pegawai Diimpor</p>
                       <p className="text-2xl font-semibold">{importResult.employee_count}</p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="pt-6">
-                      <p className="text-sm text-muted-foreground">Competencies</p>
+                      <p className="text-sm text-muted-foreground">Kompetensi</p>
                       <p className="text-2xl font-semibold">{importResult.competency_count}</p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="pt-6">
-                      <p className="text-sm text-muted-foreground">Scores Imported</p>
+                      <p className="text-sm text-muted-foreground">Skor Diimpor</p>
                       <p className="text-2xl font-semibold">{importResult.score_count}</p>
                     </CardContent>
                   </Card>
+                  {employeeImportSummary && (
+                    <>
+                      <Card>
+                        <CardContent className="pt-6">
+                          <p className="text-sm text-muted-foreground">Pegawai Baru Ditambahkan</p>
+                          <p className="text-2xl font-semibold">{employeeImportSummary.inserted}</p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="pt-6">
+                          <p className="text-sm text-muted-foreground">Pegawai Diperbarui</p>
+                          <p className="text-2xl font-semibold">{employeeImportSummary.updated}</p>
+                        </CardContent>
+                      </Card>
+                    </>
+                  )}
                 </div>
 
                 <div className="space-y-4">
                   <div>
-                    <p className="text-sm font-medium">Dataset Name</p>
+                    <p className="text-sm font-medium">Nama Dataset</p>
                     <p className="text-muted-foreground">{importResult.dataset.name}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium">Created</p>
+                    <p className="text-sm font-medium">Dibuat</p>
                     <p className="text-muted-foreground">
                       {new Date(importResult.dataset.created_at).toLocaleString()}
                     </p>
@@ -274,10 +449,10 @@ function App() {
 
                 <div className="mt-6 flex gap-4">
                   <Button onClick={handleStartOver}>
-                    Import Another File
+                    Impor Berkas Lain
                   </Button>
                   <Button variant="outline">
-                    View Dashboard
+                    Lihat Dasbor
                   </Button>
                 </div>
               </CardContent>

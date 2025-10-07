@@ -329,7 +329,12 @@ impl CsvParser {
     fn find_header_pos(headers: &StringRecord, names: &[&str]) -> Option<usize> {
         let target_norms: Vec<String> = names
             .iter()
-            .map(|n| n.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase())
+            .map(|n| {
+                n.chars()
+                    .filter(|c| c.is_alphanumeric())
+                    .collect::<String>()
+                    .to_lowercase()
+            })
             .collect();
         for (idx, h) in headers.iter().enumerate() {
             let norm = Self::normalize_header(h);

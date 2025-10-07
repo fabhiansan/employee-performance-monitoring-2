@@ -68,7 +68,7 @@ export function RatingMappingConfig({ uniqueValues, onComplete, onBack }: Rating
   };
 
   const handleComplete = () => {
-    if (unmappedValues.length === 0 || confirm('Some values are unmapped. Continue anyway?')) {
+    if (unmappedValues.length === 0 || confirm('Beberapa nilai belum dipetakan. Tetap lanjutkan?')) {
       onComplete(mappings);
     }
   };
@@ -77,7 +77,7 @@ export function RatingMappingConfig({ uniqueValues, onComplete, onBack }: Rating
     return (
       <Card>
         <CardContent className="pt-6">
-          <p className="text-center text-muted-foreground">Loading default mappings...</p>
+          <p className="text-center text-muted-foreground">Memuat pemetaan default...</p>
         </CardContent>
       </Card>
     );
@@ -87,9 +87,9 @@ export function RatingMappingConfig({ uniqueValues, onComplete, onBack }: Rating
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Configure Rating Mappings</CardTitle>
+          <CardTitle>Konfigurasi Pemetaan Peringkat</CardTitle>
           <CardDescription>
-            Map text ratings to numeric values. Default mappings have been applied where possible.
+            Petakan peringkat teks ke nilai numerik. Pemetaan default telah diterapkan jika memungkinkan.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -97,9 +97,9 @@ export function RatingMappingConfig({ uniqueValues, onComplete, onBack }: Rating
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                <strong>Unmapped values:</strong> {unmappedValues.join(', ')}
+                <strong>Nilai yang belum dipetakan:</strong> {unmappedValues.join(', ')}
                 <br />
-                Add mappings below or these values will have no numeric score.
+                Tambahkan pemetaan di bawah atau nilai-nilai ini tidak akan memiliki skor numerik.
               </AlertDescription>
             </Alert>
           )}
@@ -108,8 +108,8 @@ export function RatingMappingConfig({ uniqueValues, onComplete, onBack }: Rating
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Text Value</TableHead>
-                  <TableHead className="w-32">Numeric Value</TableHead>
+                  <TableHead>Nilai Teks</TableHead>
+                  <TableHead className="w-32">Nilai Numerik</TableHead>
                   <TableHead className="w-16"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -117,7 +117,7 @@ export function RatingMappingConfig({ uniqueValues, onComplete, onBack }: Rating
                 {mappings.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={3} className="text-center text-muted-foreground">
-                      No mappings configured
+                      Tidak ada pemetaan yang dikonfigurasi
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -161,7 +161,7 @@ export function RatingMappingConfig({ uniqueValues, onComplete, onBack }: Rating
               onClick={() => addMapping('', 0)}
             >
               <Plus className="h-4 w-4 mr-2" />
-              Add Mapping
+              Tambah Pemetaan
             </Button>
             {unmappedValues.map((value) => (
               <Button
@@ -179,10 +179,10 @@ export function RatingMappingConfig({ uniqueValues, onComplete, onBack }: Rating
 
       <div className="flex gap-4">
         <Button variant="outline" onClick={onBack}>
-          Back
+          Kembali
         </Button>
         <Button onClick={handleComplete}>
-          Continue to Validation
+          Lanjutkan ke Validasi
         </Button>
       </div>
     </div>

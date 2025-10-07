@@ -82,46 +82,47 @@ export class BrowserCSVParser {
         header: true,
         skipEmptyLines: true,
         complete: (results) => {
-          const employees: ParsedEmployee[] = (results.data as Record<string, unknown>[]).map((row) => {
-            // Try different column name variations
-            const getName = (): string => {
-              const name = row['NAMA'] ?? row['Name'] ?? row['Nama'] ?? row['nama'];
-              return typeof name === 'string' ? name : '';
-            };
+          const normalizeKey = (key: string): string =>
+            this.cleanField(key)
+              .toLowerCase()
+              .replace(/[^a-z0-9]/g, '');
 
-            const getNIP = (): string | null => {
-              const nip = row['NIP'] ?? row['Nip'] ?? row['nip'];
-              return typeof nip === 'string' ? nip : null;
-            };
+          const employees: ParsedEmployee[] = (results.data)
+            .map((row) => {
+              const obj: Record<string, unknown> =
+                typeof row === 'object' && row !== null ? (row as Record<string, unknown>) : {};
+              const keyMap = new Map<string, string>();
+              Object.keys(obj).forEach((k) => {
+                keyMap.set(normalizeKey(k), k);
+              });
 
-            const getGol = (): string | null => {
-              const gol = row['GOL'] ?? row['Gol'] ?? row['Golongan'] ?? row['gol'];
-              return typeof gol === 'string' ? gol : null;
-            };
+              const pick = (candidates: string[]): string | null => {
+                for (const cand of candidates) {
+                  const k = keyMap.get(normalizeKey(cand));
+                  if (k) {
+                    const v = obj[k];
+                    if (typeof v === 'string') return v;
+                    if (typeof v === 'number') return String(v);
+                  }
+                }
+                return null;
+              };
 
-            const getJabatan = (): string | null => {
-              const jabatan = row['JABATAN'] ?? row['Jabatan'] ?? row['jabatan'];
-              return typeof jabatan === 'string' ? jabatan : null;
-            };
+              const name = pick(['NAMA', 'Nama', 'NAME', 'Name', 'nama']) ?? '';
+              const nip = pick(['NIP', 'Nip', 'nip', 'No NIP', 'No. NIP', 'Nomor Induk Pegawai']);
+              const gol = pick(['GOL', 'Gol', 'Golongan', 'gol']);
+              const jabatan = pick(['JABATAN', 'Jabatan', 'jabatan']);
+              const subJabatan = pick(['SUB JABATAN', 'Sub Jabatan', 'Sub_Jabatan', 'sub_jabatan']);
 
-            const getSubJabatan = (): string | null => {
-              const subJabatan = row['SUB JABATAN'] ?? row['Sub Jabatan'] ?? row['Sub_Jabatan'] ?? row['sub_jabatan'];
-              return typeof subJabatan === 'string' ? subJabatan : null;
-            };
-
-            const nip = getNIP();
-            const gol = getGol();
-            const jabatan = getJabatan();
-            const subJabatan = getSubJabatan();
-
-            return {
-              name: this.cleanField(getName()),
-              nip: nip !== null ? this.cleanField(nip) : null,
-              gol: gol !== null ? this.cleanField(gol) : null,
-              jabatan: jabatan !== null ? this.cleanField(jabatan) : null,
-              sub_jabatan: subJabatan !== null ? this.cleanField(subJabatan) : null,
-            };
-          }).filter(emp => emp.name); // Filter out empty rows
+              return {
+                name: this.cleanField(name),
+                nip: nip !== null ? this.cleanField(nip) : null,
+                gol: gol !== null ? this.cleanField(gol) : null,
+                jabatan: jabatan !== null ? this.cleanField(jabatan) : null,
+                sub_jabatan: subJabatan !== null ? this.cleanField(subJabatan) : null,
+              };
+            })
+            .filter(emp => emp.name);
 
           resolve(employees);
         },

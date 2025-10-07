@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hasil Penilaian Kinerja Pegawai</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            background-color: #f5f5f5;
+            padding: 10px;
+        }
+
+        .container {
+            max-width: 210mm;
+            min-height: 297mm;
+            margin: 0 auto;
+            background-color: white;
+            padding: 15mm;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            border-bottom: 3px solid #000;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            margin-right: 20px;
+            border: 2px solid #000;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 10px;
+        }
+
+        .header-text {
+            flex: 1;
+        }
+
+        .header-text h1 {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .header-text h2 {
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .contact-info {
+            font-size: 11px;
+            margin-top: 5px;
+        }
+
+        .contact-info a {
+            color: #0066cc;
+            text-decoration: none;
+        }
+
+        .title {
+            text-align: center;
+            font-weight: bold;
+            font-size: 14px;
+            margin: 30px 0;
+            text-decoration: underline;
+        }
+
+        .content {
+            font-size: 12px;
+            line-height: 1.8;
+            text-align: justify;
+            margin-bottom: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 12px;
+        }
+
+        table, th, td {
+            border: 1px solid #000;
+        }
+
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f0f0f0;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .criteria-table td:first-child {
+            width: 50px;
+            text-align: center;
+        }
+
+        .criteria-table td:nth-child(2) {
+            width: 70%;
+        }
+
+        .criteria-table td:last-child {
+            width: 20%;
+            text-align: center;
+        }
+
+        .sub-item {
+            padding-left: 20px;
+        }
+
+        .rating-section {
+            margin: 20px 0;
+            padding-left: 40px;
+        }
+
+        .rating-section p {
+            margin: 5px 0;
+        }
+
+        .result {
+            margin: 20px 0;
+            text-align: justify;
+        }
+
+        .evaluation-table {
+            margin-top: 30px;
+        }
+
+        .evaluation-table td:nth-child(2) {
+            width: 50%;
+        }
+
+        .evaluation-table td:nth-child(3),
+        .evaluation-table td:nth-child(4) {
+            width: 15%;
+            text-align: center;
+        }
+
+        .total-row {
+            font-weight: bold;
+            background-color: #f0f0f0;
+        }
+
+        .signature {
+            margin-top: 40px;
+            text-align: center;
+        }
+
+        .signature-name {
+            font-weight: bold;
+            margin-top: 80px;
+            text-decoration: underline;
+        }
+
+        @media print {
+            body {
+                background-color: white;
+                padding: 0;
+            }
+            .container {
+                box-shadow: none;
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">
+                LOGO
+            </div>
+            <div class="header-text">
+                <h1>PEMERINTAH PROVINSI KALIMANTAN SELATAN</h1>
+                <h2>DINAS SOSIAL</h2>
+                <div class="contact-info">
+                    Jalan Letjen R. Soeprapto No. 8 Banjarmasin Kode Pos 70114<br>
+                    Telepon : (0511) 335 0825, Fax. (0511) 335 4193<br>
+                    Email: <a href="mailto:dinsosialselprov@gmail.com">dinsosialselprov@gmail.com</a> Website: dinsoss.kalselprov.go.id
+                </div>
+            </div>
+        </div>
+
+        <h3 class="title">HASIL PENILAIAN KINERJA PEGAWAI DINAS SOSIAL PROVINSI<br>KALIMANTAN SELATAN SEMESTER I TAHUN 2024</h3>
+
+        <div class="content">
+            <p style="text-indent: 40px;">
+                Penilaian Kinerja oleh seluruh pegawai Dinas Sosial Provinsi Kalimantan Selatan sampai dengan Semester I Tahun 2024 berdasarkan dari Kualitas Kinerja dengan .melalui form yang disebarkan tiap akhir semester, dengan kriteria penilaian sebagai berikut :
+            </p>
+        </div>
+
+        <table class="criteria-table">
+            <thead>
+                <tr>
+                    <th>NO.</th>
+                    <th>KRITERIA</th>
+                    <th>BOBOT</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>A.</strong></td>
+                    <td><strong>PERILAKU KERJA</strong></td>
+                    <td><strong>30%</strong></td>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td class="sub-item">1. Kehadiran dan Tepat Waktu</td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td class="sub-item">2. Management Waktu Kerja</td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td class="sub-item">3. Kerjasama dan Teamwork</td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td class="sub-item">4. Inisiatif dan Flexibilitas</td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td class="sub-item">5. Kepemimpinan</td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td><strong>B.</strong></td>
+                    <td><strong>KUALITAS KINERJA</strong></td>
+                    <td><strong>50%</strong></td>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td class="sub-item">1. Kualitas Kinerja</td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td class="sub-item">2. Kemampuan Berkomunikasi</td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td class="sub-item">3. Pemahaman Urusan Sosial</td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td><strong>C.</strong></td>
+                    <td><strong>PENILAIAN PIMPINAN</strong></td>
+                    <td><strong>20%</strong></td>
+                </tr>
+                <tr class="total-row">
+                    <td></td>
+                    <td style="text-align: center;"><strong>TOTAL</strong></td>
+                    <td><strong>100%</strong></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="rating-section">
+            <p>Predikat skor akhir penilaian Penilaian Pegawai dengan kinerja terbaik sebagai berikut :</p>
+            <p style="margin-left: 20px;">a. <strong>SANGAT BAIK</strong> : ≥ 80,00</p>
+            <p style="margin-left: 20px;">b. <strong>BAIK</strong> : 70,00 - 79,99</p>
+            <p style="margin-left: 20px;">c. <strong>KURANG BAIK</strong> : 65,00 - 69,99</p>
+        </div>
+
+        <div class="result">
+            <p style="text-indent: 40px;">
+                Berdasarkan hasil penilaian, dapat disampaikan bahwa capaian kinerja Sekretaris <strong>MURJANI, S.Pd, MM</strong> memperoleh predikat <strong>"SANGAT BAIK"</strong> dengan nilai <strong>80,21</strong>.
+            </p>
+        </div>
+
+        <h3 class="title" style="margin-top: 50px;">KERTAS KERJA EVALUASI PENGUKURAN KINERJA ESELON III<br>DINAS SOSIAL PROVINSI KALIMANTAN SELATAN SEMESTER I<br>TAHUN 2024</h3>
+
+        <table class="evaluation-table">
+            <thead>
+                <tr>
+                    <th>NO.</th>
+                    <th>KOMPONEN / KRITERIA</th>
+                    <th>BOBOT</th>
+                    <th>NILAI</th>
+                </tr>
+                <tr>
+                    <th>1</th>
+                    <th>2</th>
+                    <th>3</th>
+                    <th>3</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="text-align: center;"><strong>I.</strong></td>
+                    <td><strong>PERILAKU KERJA (30%)</strong></td>
+                    <td style="text-align: center;"><strong>25,50</strong></td>
+                    <td style="text-align: center;"><strong>23,91</strong></td>
+                </tr>
+                <tr>
+                    <td style="text-align: center;">1</td>
+                    <td>Kehadiran dan Tepat Waktu</td>
+                    <td></td>
+                    <td style="text-align: center;">4,03</td>
+                </tr>
+                <tr>
+                    <td style="text-align: center;">2</td>
+                    <td>Management Waktu Kerja</td>
+                    <td></td>
+                    <td style="text-align: center;">3,96</td>
+                </tr>
+                <tr>
+                    <td style="text-align: center;">3</td>
+                    <td>Kerjasama dan <em>Teamwork</em></td>
+                    <td></td>
+                    <td style="text-align: center;">3,98</td>
+                </tr>
+                <tr>
+                    <td style="text-align: center;">4</td>
+                    <td>Inisiatif dan Flexibilitas</td>
+                    <td></td>
+                    <td style="text-align: center;">3,96</td>
+                </tr>
+                <tr>
+                    <td style="text-align: center;">5</td>
+                    <td>Kepemimpinan</td>
+                    <td></td>
+                    <td style="text-align: center;">7,98</td>
+                </tr>
+                <tr>
+                    <td style="text-align: center;"><strong>II.</strong></td>
+                    <td><strong>KUALITAS KINERJA (50%)</strong></td>
+                    <td style="text-align: center;"><strong>42,50</strong></td>
+                    <td style="text-align: center;"><strong>39,70</strong></td>
+                </tr>
+                <tr>
+                    <td style="text-align: center;">1</td>
+                    <td>Kualitas Kinerja</td>
+                    <td></td>
+                    <td style="text-align: center;">23,78</td>
+                </tr>
+                <tr>
+                    <td style="text-align: center;">2</td>
+                    <td>Kemampuan Berkomunikasi</td>
+                    <td></td>
+                    <td style="text-align: center;">8,01</td>
+                </tr>
+                <tr>
+                    <td style="text-align: center;">3</td>
+                    <td>Pemahaman Urusan Sosial</td>
+                    <td></td>
+                    <td style="text-align: center;">7,91</td>
+                </tr>
+                <tr>
+                    <td style="text-align: center;"><strong>III.</strong></td>
+                    <td><strong>PENILAIAN PIMPINAN (20%)</strong></td>
+                    <td style="text-align: center;"><strong>17,00</strong></td>
+                    <td style="text-align: center;"><strong>16,60</strong></td>
+                </tr>
+                <tr class="total-row">
+                    <td colspan="2" style="text-align: center;"><strong>NILAI AKHIR</strong></td>
+                    <td style="text-align: center;"><strong>85,00</strong></td>
+                    <td style="text-align: center;"><strong>80,21</strong></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="signature">
+            <p>Plt. KEPALA DINAS SOSIAL</p>
+            <p>PROVINSI KALIMANTAN SELATAN</p>
+            <p class="signature-name">MUHAMMADUN, A.KS, M.I.Kom</p>
+        </div>
+    </div>
+</body>
+</html>

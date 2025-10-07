@@ -9,9 +9,19 @@ import { cn } from '@/lib/utils';
 
 interface FileImportProps {
   onFileSelected: (filePathOrFile: string | File, preview: CSVPreview) => void;
+  onFileCleared?: () => void;
+  title?: string;
+  description?: string;
+  supportedFormatsLabel?: string;
 }
 
-export function FileImport({ onFileSelected }: FileImportProps) {
+export function FileImport({
+  onFileSelected,
+  onFileCleared,
+  title = 'Impor Berkas CSV',
+  description = 'Klik untuk mencari berkas Anda',
+  supportedFormatsLabel = 'Format yang didukung: CSV, TSV, TXT',
+}: FileImportProps) {
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [selectedFileOrPath, setSelectedFileOrPath] = useState<File | string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -30,7 +40,7 @@ export function FileImport({ onFileSelected }: FileImportProps) {
       setSelectedFileOrPath(fileOrPath);
       onFileSelected(fileOrPath, preview);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load file');
+      setError(err instanceof Error ? err.message : 'Gagal memuat berkas');
     } finally {
       setIsLoading(false);
     }
@@ -60,7 +70,7 @@ export function FileImport({ onFileSelected }: FileImportProps) {
           await handleFileProcess(selected);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to open file picker');
+        setError(err instanceof Error ? err.message : 'Gagal membuka pemilih berkas');
       }
     } else {
       // Use HTML file input
@@ -75,6 +85,7 @@ export function FileImport({ onFileSelected }: FileImportProps) {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+    onFileCleared?.();
   };
 
   return (
@@ -98,13 +109,13 @@ export function FileImport({ onFileSelected }: FileImportProps) {
         >
           <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
           <h3 className="text-lg font-semibold mb-2">
-            Import CSV File
+            {title}
           </h3>
           <p className="text-sm text-muted-foreground mb-4">
-            Click to browse for your file
+            {description}
           </p>
           <p className="text-xs text-muted-foreground">
-            Supported formats: CSV, TSV, TXT
+            {supportedFormatsLabel}
           </p>
         </div>
       ) : (
@@ -142,7 +153,7 @@ export function FileImport({ onFileSelected }: FileImportProps) {
       {isLoading && (
         <Alert className="mt-4">
           <Loader2 className="h-4 w-4 animate-spin" />
-          <AlertDescription>Loading file preview...</AlertDescription>
+          <AlertDescription>Memuat pratinjau berkas...</AlertDescription>
         </Alert>
       )}
     </div>

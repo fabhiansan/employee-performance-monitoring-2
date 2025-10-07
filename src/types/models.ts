@@ -72,6 +72,25 @@ export interface CreateDataset {
   source_file?: string;
 }
 
+export interface UpdateDatasetRequest {
+  name: string;
+  description?: string | null;
+}
+
+export interface MergeDatasetsRequest {
+  target_name: string;
+  target_description: string | null;
+  source_dataset_ids: number[];
+}
+
+export interface MergeDatasetsResult {
+  dataset: Dataset;
+  employee_count: number;
+  score_count: number;
+  rating_mapping_count: number;
+  source_dataset_ids: number[];
+}
+
 export interface CreateEmployee {
   name: string;
   nip?: string;
@@ -131,13 +150,36 @@ export interface ParsedScore {
   value: string;
 }
 
-export interface ImportRequest {
+export interface EmployeeImportRequest {
+  employees: ParsedEmployee[];
+}
+
+export interface EmployeeImportResult {
+  inserted: number;
+  updated: number;
+  total: number;
+}
+
+export interface PerformanceImportRequest {
   dataset_name: string;
   dataset_description: string | null;
   source_file: string;
-  employees: ParsedEmployee[];
+  employee_names: string[];
   scores: ParsedScore[];
   rating_mappings: CreateRatingMapping[];
+}
+
+export interface PerformanceAppendRequest {
+  dataset_id: number;
+  employee_names: string[];
+  scores: ParsedScore[];
+  rating_mappings: CreateRatingMapping[];
+}
+
+export interface DatasetEmployeeAppendResult {
+  created: number;
+  updated: number;
+  linked: number;
 }
 
 export interface ImportResult {
@@ -183,6 +225,8 @@ export interface DatasetComparison {
   average_delta: number;
 }
 
+export type PositionStatus = 'Staff' | 'Eselon';
+
 export interface EmployeeWithStats {
   id: number;
   name: string;
@@ -192,6 +236,7 @@ export interface EmployeeWithStats {
   sub_jabatan: string | null;
   created_at: string;
   updated_at: string;
+  position_status: PositionStatus;
   average_score: number;
   score_count: number;
 }
@@ -212,6 +257,15 @@ export interface EmployeePerformance {
   average_score: number;
   strengths: string[];
   gaps: string[];
+}
+
+export interface UpdateEmployee {
+  id: number;
+  name?: string;
+  nip?: string | null; // undefined to ignore, null to clear
+  gol?: string | null;
+  jabatan?: string | null;
+  sub_jabatan?: string | null;
 }
 
 export interface ImportValidationPayload {
@@ -253,4 +307,11 @@ export interface ImportValidationSummary {
   orphan_scores: OrphanScoreIssue[];
   unmapped_ratings: UnmappedRatingIssue[];
   blank_employee_names: BlankEmployeeNameIssue[];
+}
+
+export type SortDirection = 'asc' | 'desc';
+
+export interface SortState<TColumn extends string = string> {
+  column: TColumn;
+  direction: SortDirection;
 }

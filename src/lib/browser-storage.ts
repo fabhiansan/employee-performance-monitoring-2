@@ -8,7 +8,6 @@ import type {
   DatasetStats,
   EmployeeListResult,
   EmployeePerformance,
-  ImportRequest,
   ImportResult,
   ScoreDistribution,
   CompetencyStats,
@@ -26,7 +25,24 @@ import type {
   GeneratedSummary,
   DatasetComparison,
   CompetencyDelta,
+  UpdateDatasetRequest,
+  MergeDatasetsRequest,
+  MergeDatasetsResult,
+  EmployeeImportRequest,
+  EmployeeImportResult,
+  PerformanceImportRequest,
+  ParsedEmployee,
+  DatasetEmployeeAppendResult,
+  SortState,
 } from '@/types/models';
+
+import {
+  DEFAULT_EMPLOYEE_SORT,
+  derivePositionStatus,
+  isEmployeeSortColumn,
+  sortEmployees,
+  type EmployeeSortColumn,
+} from './employee-utils';
 
 const DB_NAME = 'employee_monitoring';
 const DB_VERSION = 3;
@@ -293,6 +309,10 @@ class BrowserStorage {
     });
   }
 
+  async listAllEmployees(): Promise<Employee[]> {
+    return this.getAllEmployees();
+  }
+
   async getDataset(id: number): Promise<Dataset> {
     const store = await this.getObjectStore('datasets');
     return new Promise((resolve, reject) => {
@@ -315,6 +335,117 @@ class BrowserStorage {
       request.onsuccess = () => resolve();
       request.onerror = () => reject(new Error(request.error?.message ?? 'Failed to delete dataset'));
     });
+  }
+
+  async updateDataset(id: number, updates: UpdateDatasetRequest): Promise<Dataset> {
+    const store = await this.getObjectStore('datasets', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.get(id);
+      request.onsuccess = () => {
+        const existing = request.result as Dataset | undefined;
+        if (!existing) {
+          reject(new Error('Dataset not found'));
+          return;
+        }
+
+        const name = updates.name.trim();
+        if (!name) {
+          reject(new Error('Dataset name cannot be empty'));
+          return;
+        }
+
+        const descriptionInput = updates.description;
+        let nextDescription: string | null;
+        if (descriptionInput === undefined) {
+          nextDescription = existing.description;
+        } else if (descriptionInput === null) {
+          nextDescription = null;
+        } else {
+          const trimmed = descriptionInput.trim();
+          nextDescription = trimmed.length === 0 ? null : trimmed;
+        }
+
+        const updated: Dataset = {
+          ...existing,
+          name,
+          description: nextDescription,
+          updated_at: new Date().toISOString(),
+        };
+
+        const putRequest = store.put(updated);
+        putRequest.onsuccess = () => resolve(updated);
+        putRequest.onerror = () => reject(new Error(putRequest.error?.message ?? 'Failed to update dataset'));
+      };
+      request.onerror = () => reject(new Error(request.error?.message ?? 'Failed to load dataset for update'));
+    });
+  }
+
+  async mergeDatasets(request: MergeDatasetsRequest): Promise<MergeDatasetsResult> {
+    const uniqueIds = request.source_dataset_ids.filter((id, index, array) => array.indexOf(id) === index);
+    if (uniqueIds.length < 2) {
+      throw new Error('Select at least two datasets to merge');
+    }
+
+    const name = request.target_name.trim();
+    if (!name) {
+      throw new Error('Target dataset name cannot be empty');
+    }
+
+    const description = request.target_description
+      ? request.target_description.trim().length === 0
+        ? undefined
+        : request.target_description.trim()
+      : undefined;
+
+    const dataset = await this.createDataset({
+      name,
+      description,
+    });
+
+    const employeeIds = new Set<number>();
+    for (const datasetId of uniqueIds) {
+      const links = await this.getDatasetEmployees(datasetId);
+      links.forEach((link) => employeeIds.add(link.employee_id));
+    }
+
+    for (const employeeId of employeeIds) {
+      await this.linkEmployeeToDataset(dataset.id, employeeId);
+    }
+
+    for (const datasetId of uniqueIds) {
+      const scores = await this.getScoresByDataset(datasetId);
+      for (const score of scores) {
+        await this.insertScoreIfMissing({
+          employee_id: score.employee_id,
+          dataset_id: dataset.id,
+          competency_id: score.competency_id,
+          raw_value: score.raw_value,
+          numeric_value: score.numeric_value ?? null,
+          created_at: score.created_at ?? new Date().toISOString(),
+        });
+      }
+
+      const mappings = await this.getRatingMappingsByDataset(datasetId);
+      for (const mapping of mappings) {
+        await this.insertRatingMappingIfMissing({
+          dataset_id: dataset.id,
+          text_value: mapping.text_value,
+          numeric_value: mapping.numeric_value,
+        });
+      }
+    }
+
+    const employee_count = (await this.getDatasetEmployees(dataset.id)).length;
+    const score_count = (await this.getScoresByDataset(dataset.id)).length;
+    const rating_mapping_count = (await this.getRatingMappingsByDataset(dataset.id)).length;
+
+    return {
+      dataset,
+      employee_count,
+      score_count,
+      rating_mapping_count,
+      source_dataset_ids: uniqueIds,
+    };
   }
 
   // Employee operations
@@ -481,7 +612,8 @@ class BrowserStorage {
     datasetId: number,
     search?: string,
     limit: number = 50,
-    offset: number = 0
+    offset: number = 0,
+    sort?: SortState,
   ): Promise<EmployeeListResult> {
     const links = await this.getDatasetEmployees(datasetId);
     const records = await Promise.all(
@@ -501,8 +633,23 @@ class BrowserStorage {
       );
     }
 
-    const total = employees.length;
-    const paginated = employees.slice(offset, offset + limit);
+    const effectiveSort: SortState<EmployeeSortColumn> =
+      sort && typeof sort.column === 'string' && isEmployeeSortColumn(sort.column)
+        ? {
+            column: sort.column,
+            direction: sort.direction === 'desc' ? 'desc' : 'asc',
+          }
+        : DEFAULT_EMPLOYEE_SORT;
+
+    const employeesWithStatus = employees.map((emp) => ({
+      ...emp,
+      position_status: derivePositionStatus(emp.jabatan, emp.sub_jabatan, emp.gol),
+    }));
+
+    const sorted = sortEmployees(employeesWithStatus, effectiveSort);
+
+    const total = sorted.length;
+    const paginated = sorted.slice(offset, offset + limit);
 
     const employeesWithStats: EmployeeWithStats[] = await Promise.all(
       paginated.map(async (emp) => {
@@ -548,6 +695,16 @@ class BrowserStorage {
       const request = index.getAll(IDBKeyRange.only(datasetId));
       request.onsuccess = () => resolve(request.result as Score[]);
       request.onerror = () => reject(new Error(request.error?.message ?? 'Failed to get scores by dataset'));
+    });
+  }
+
+  private async getRatingMappingsByDataset(datasetId: number): Promise<RatingMapping[]> {
+    const store = await this.getObjectStore('rating_mappings');
+    return new Promise((resolve, reject) => {
+      const index = store.index('dataset_id');
+      const request = index.getAll(IDBKeyRange.only(datasetId));
+      request.onsuccess = () => resolve(request.result as RatingMapping[]);
+      request.onerror = () => reject(new Error(request.error?.message ?? 'Failed to get rating mappings by dataset'));
     });
   }
 
@@ -652,6 +809,22 @@ class BrowserStorage {
     });
   }
 
+  private async insertScoreIfMissing(score: Omit<Score, 'id'>): Promise<void> {
+    const store = await this.getObjectStore('scores', 'readwrite');
+    await new Promise<void>((resolve, reject) => {
+      const request = store.add(score);
+      request.onsuccess = () => resolve();
+      request.onerror = () => {
+        const error = request.error;
+        if (error && error.name === 'ConstraintError') {
+          resolve();
+        } else {
+          reject(new Error(error?.message ?? 'Failed to copy score'));
+        }
+      };
+    });
+  }
+
   // Rating mapping operations
   private async createRatingMapping(mapping: Omit<RatingMapping, 'id'>): Promise<RatingMapping> {
     const store = await this.getObjectStore('rating_mappings', 'readwrite');
@@ -664,6 +837,22 @@ class BrowserStorage {
     });
   }
 
+  private async insertRatingMappingIfMissing(mapping: Omit<RatingMapping, 'id'>): Promise<void> {
+    const store = await this.getObjectStore('rating_mappings', 'readwrite');
+    await new Promise<void>((resolve, reject) => {
+      const request = store.add(mapping);
+      request.onsuccess = () => resolve();
+      request.onerror = () => {
+        const error = request.error;
+        if (error && error.name === 'ConstraintError') {
+          resolve();
+        } else {
+          reject(new Error(error?.message ?? 'Failed to copy rating mapping'));
+        }
+      };
+    });
+  }
+
   getDefaultRatingMappings(): CreateRatingMapping[] {
     return [
       { dataset_id: 0, text_value: 'Sangat Baik', numeric_value: 85 },
@@ -672,8 +861,153 @@ class BrowserStorage {
     ];
   }
 
-  // Import operation
-  async importDataset(request: ImportRequest): Promise<ImportResult> {
+  // Import operations
+  async importEmployees(request: EmployeeImportRequest): Promise<EmployeeImportResult> {
+    if (request.employees.length === 0) {
+      return { inserted: 0, updated: 0, total: 0 };
+    }
+
+    const existingEmployees = await this.getAllEmployees();
+    const employeesByNormalized = new Map<string, Employee>();
+    existingEmployees.forEach((employee) => {
+      employeesByNormalized.set(this.normalizeName(employee.name), employee);
+    });
+
+    const uniqueEmployees = new Map<string, ParsedEmployee>();
+    for (const employee of request.employees) {
+      const trimmedName = employee.name.trim();
+      if (!trimmedName) {
+        throw new Error('Employee name cannot be blank');
+      }
+      uniqueEmployees.set(this.normalizeName(trimmedName), {
+        name: trimmedName,
+        nip: this.sanitizeOptional(employee.nip),
+        gol: this.sanitizeOptional(employee.gol),
+        jabatan: this.sanitizeOptional(employee.jabatan),
+        sub_jabatan: this.sanitizeOptional(employee.sub_jabatan),
+      });
+    }
+
+    let inserted = 0;
+    let updated = 0;
+
+    for (const [normalized, employeeData] of uniqueEmployees.entries()) {
+      const existing = employeesByNormalized.get(normalized);
+      if (existing) {
+        const next = await this.updateEmployee(existing.id, {
+          name: employeeData.name,
+          nip: employeeData.nip ?? existing.nip,
+          gol: employeeData.gol ?? existing.gol,
+          jabatan: employeeData.jabatan ?? existing.jabatan,
+          sub_jabatan: employeeData.sub_jabatan ?? existing.sub_jabatan,
+        });
+        employeesByNormalized.set(normalized, next);
+        updated += 1;
+      } else {
+        const created = await this.createEmployee({
+          name: employeeData.name,
+          nip: employeeData.nip,
+          gol: employeeData.gol,
+          jabatan: employeeData.jabatan,
+          sub_jabatan: employeeData.sub_jabatan,
+        });
+        employeesByNormalized.set(normalized, created);
+        inserted += 1;
+      }
+    }
+
+    return {
+      inserted,
+      updated,
+      total: inserted + updated,
+    };
+  }
+
+  async appendDatasetEmployees(
+    datasetId: number,
+    employees: ParsedEmployee[],
+  ): Promise<DatasetEmployeeAppendResult> {
+    if (!Number.isFinite(datasetId)) {
+      throw new Error('A valid dataset is required');
+    }
+
+    if (employees.length === 0) {
+      throw new Error('Provide at least one employee to append');
+    }
+
+    const uniqueEmployees = new Map<string, ParsedEmployee>();
+    for (const employee of employees) {
+      const trimmed = employee.name.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const normalized = this.normalizeName(trimmed);
+      const sanitized: ParsedEmployee = {
+        name: trimmed,
+        nip: this.sanitizeOptional(employee.nip),
+        gol: this.sanitizeOptional(employee.gol),
+        jabatan: this.sanitizeOptional(employee.jabatan),
+        sub_jabatan: this.sanitizeOptional(employee.sub_jabatan),
+      };
+
+      const existing = uniqueEmployees.get(normalized);
+      if (existing) {
+        if (!existing.nip && sanitized.nip) existing.nip = sanitized.nip;
+        if (!existing.gol && sanitized.gol) existing.gol = sanitized.gol;
+        if (!existing.jabatan && sanitized.jabatan) existing.jabatan = sanitized.jabatan;
+        if (!existing.sub_jabatan && sanitized.sub_jabatan) {
+          existing.sub_jabatan = sanitized.sub_jabatan;
+        }
+      } else {
+        uniqueEmployees.set(normalized, sanitized);
+      }
+    }
+
+    if (uniqueEmployees.size === 0) {
+      throw new Error('Provide at least one employee to append');
+    }
+
+    const dataset = await this.getDataset(datasetId);
+    const employeesToImport = Array.from(uniqueEmployees.values());
+    const importResult = await this.importEmployees({ employees: employeesToImport });
+
+    const allEmployees = await this.getAllEmployees();
+    const employeesByNormalized = new Map<string, Employee>();
+    allEmployees.forEach((employee) => {
+      employeesByNormalized.set(this.normalizeName(employee.name), employee);
+    });
+
+    let linked = 0;
+    for (const [normalized] of uniqueEmployees.entries()) {
+      const employee = employeesByNormalized.get(normalized);
+      if (!employee) {
+        continue;
+      }
+      const existingLink = await this.getDatasetEmployeeRecord(datasetId, employee.id);
+      await this.linkEmployeeToDataset(datasetId, employee.id);
+      if (!existingLink) {
+        linked += 1;
+      }
+    }
+
+    const datasetStore = await this.getObjectStore('datasets', 'readwrite');
+    await new Promise<void>((resolve, reject) => {
+      const putRequest = datasetStore.put({
+        ...dataset,
+        updated_at: new Date().toISOString(),
+      });
+      putRequest.onsuccess = () => resolve();
+      putRequest.onerror = () => reject(new Error(putRequest.error?.message ?? 'Failed to update dataset timestamp'));
+    });
+
+    return {
+      created: importResult.inserted,
+      updated: importResult.updated,
+      linked,
+    };
+  }
+
+  async importPerformanceDataset(request: PerformanceImportRequest): Promise<ImportResult> {
     const dataset = await this.createDataset({
       name: request.dataset_name,
       description: request.dataset_description ?? undefined,
@@ -700,34 +1034,37 @@ class BrowserStorage {
       employeesByNormalized.set(this.normalizeName(employee.name), employee);
     });
 
-    const importedEmployees = new Map<string, Employee>();
-    const linkedEmployeeIds = new Set<number>();
-
-    for (const parsedEmployee of request.employees) {
-      const trimmedName = parsedEmployee.name.trim();
-      if (!trimmedName) {
+    const normalizedToDisplay = new Map<string, string>();
+    for (const name of request.employee_names) {
+      const trimmed = name.trim();
+      if (!trimmed) {
         continue;
       }
+      normalizedToDisplay.set(this.normalizeName(trimmed), trimmed);
+    }
 
-      const normalizedName = this.normalizeName(trimmedName);
-      const employeeData = {
-        name: trimmedName,
-        nip: this.sanitizeOptional(parsedEmployee.nip),
-        gol: this.sanitizeOptional(parsedEmployee.gol),
-        jabatan: this.sanitizeOptional(parsedEmployee.jabatan),
-        sub_jabatan: this.sanitizeOptional(parsedEmployee.sub_jabatan),
-      };
+    for (const score of request.scores) {
+      const trimmed = score.employee_name.trim();
+      if (!trimmed) {
+        throw new Error('Score is associated with a blank employee name');
+      }
+      const normalized = this.normalizeName(trimmed);
+      if (!normalizedToDisplay.has(normalized)) {
+        normalizedToDisplay.set(normalized, trimmed);
+      }
+    }
 
-      let employee = employeesByNormalized.get(normalizedName);
-      if (employee) {
-        employee = await this.updateEmployee(employee.id, employeeData);
-      } else {
-        employee = await this.createEmployee(employeeData);
-        employeesByNormalized.set(normalizedName, employee);
+    const linkedEmployeeIds = new Set<number>();
+    const employeeLookup = new Map<string, Employee>();
+
+    for (const [normalized, displayName] of normalizedToDisplay.entries()) {
+      const employee = employeesByNormalized.get(normalized);
+      if (!employee) {
+        throw new Error(`Employee not found in master data: ${displayName}`);
       }
 
       await this.linkEmployeeToDataset(dataset.id, employee.id);
-      importedEmployees.set(normalizedName, employee);
+      employeeLookup.set(normalized, employee);
       linkedEmployeeIds.add(employee.id);
     }
 
@@ -741,20 +1078,16 @@ class BrowserStorage {
 
     let scoreCount = 0;
     for (const parsedScore of request.scores) {
-      const normalizedName = this.normalizeName(parsedScore.employee_name);
-      let employee = importedEmployees.get(normalizedName);
+      const employeeName = parsedScore.employee_name.trim();
+      const normalizedName = this.normalizeName(employeeName);
+      const employee = employeeLookup.get(normalizedName);
       if (!employee) {
-        employee = employeesByNormalized.get(normalizedName);
-        if (employee) {
-          await this.linkEmployeeToDataset(dataset.id, employee.id);
-          importedEmployees.set(normalizedName, employee);
-          linkedEmployeeIds.add(employee.id);
-        }
+        throw new Error(`Employee not found: ${employeeName}`);
       }
 
       const competencyName = parsedScore.competency.trim();
       const competency = competencyMap.get(competencyName);
-      if (!employee || !competency) {
+      if (!competency) {
         continue;
       }
 

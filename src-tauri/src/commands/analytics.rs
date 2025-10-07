@@ -75,22 +75,42 @@ fn sanitize_text(value: &str) -> String {
     decomposed
         .to_lowercase()
         .chars()
-        .map(|ch| if ch.is_ascii_alphabetic() || ch.is_ascii_whitespace() { ch } else { ' ' })
+        .map(|ch| {
+            if ch.is_ascii_alphabetic() || ch.is_ascii_whitespace() {
+                ch
+            } else {
+                ' '
+            }
+        })
         .collect::<String>()
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
 }
 
-fn derive_position_status(jabatan: Option<&str>, sub_jabatan: Option<&str>, gol: Option<&str>) -> String {
-    let combined = format!("{} {}", jabatan.unwrap_or_default(), sub_jabatan.unwrap_or_default());
+fn derive_position_status(
+    jabatan: Option<&str>,
+    sub_jabatan: Option<&str>,
+    gol: Option<&str>,
+) -> String {
+    let combined = format!(
+        "{} {}",
+        jabatan.unwrap_or_default(),
+        sub_jabatan.unwrap_or_default()
+    );
     let normalized = sanitize_text(&combined);
 
     if !normalized.is_empty() {
-        if STAFF_KEYWORDS.iter().any(|keyword| normalized.contains(keyword)) {
+        if STAFF_KEYWORDS
+            .iter()
+            .any(|keyword| normalized.contains(keyword))
+        {
             return "Staff".to_string();
         }
-        if ESELON_KEYWORDS.iter().any(|keyword| normalized.contains(keyword)) {
+        if ESELON_KEYWORDS
+            .iter()
+            .any(|keyword| normalized.contains(keyword))
+        {
             return "Eselon".to_string();
         }
     }
@@ -456,7 +476,13 @@ pub async fn list_employees(
 
     let staff_condition = STAFF_KEYWORDS
         .iter()
-        .map(|keyword| format!("instr({role}, '{keyword}') > 0", role = ROLE_ORDER_EXPR, keyword = keyword))
+        .map(|keyword| {
+            format!(
+                "instr({role}, '{keyword}') > 0",
+                role = ROLE_ORDER_EXPR,
+                keyword = keyword
+            )
+        })
         .collect::<Vec<_>>()
         .join(" OR ");
     let staff_condition = if staff_condition.is_empty() {
@@ -467,7 +493,13 @@ pub async fn list_employees(
 
     let eselon_condition = ESELON_KEYWORDS
         .iter()
-        .map(|keyword| format!("instr({role}, '{keyword}') > 0", role = ROLE_ORDER_EXPR, keyword = keyword))
+        .map(|keyword| {
+            format!(
+                "instr({role}, '{keyword}') > 0",
+                role = ROLE_ORDER_EXPR,
+                keyword = keyword
+            )
+        })
         .collect::<Vec<_>>()
         .join(" OR ");
     let eselon_condition = if eselon_condition.is_empty() {
@@ -574,7 +606,11 @@ pub async fn list_employees(
                 let status = if matches!(position_status.as_str(), "Staff" | "Eselon") {
                     position_status
                 } else {
-                    derive_position_status(jabatan.as_deref(), sub_jabatan.as_deref(), gol.as_deref())
+                    derive_position_status(
+                        jabatan.as_deref(),
+                        sub_jabatan.as_deref(),
+                        gol.as_deref(),
+                    )
                 };
 
                 EmployeeWithStats {

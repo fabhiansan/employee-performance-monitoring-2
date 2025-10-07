@@ -35,7 +35,7 @@ export function DashboardPage() {
         const data = await getDatasetStats(parseInt(datasetId));
         setStats(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load stats');
+        setError(err instanceof Error ? err.message : 'Gagal memuat statistik');
         console.error('Failed to load stats:', err);
       } finally {
         setLoading(false);
@@ -65,7 +65,7 @@ export function DashboardPage() {
   if (error || !stats) {
     return (
       <Alert variant="destructive">
-        <AlertDescription>{error ?? 'No data available'}</AlertDescription>
+        <AlertDescription>{error ?? 'Data tidak tersedia'}</AlertDescription>
       </Alert>
     );
   }
@@ -104,46 +104,121 @@ export function DashboardPage() {
 
   if (bestCompetency) {
     insightItems.push({
-      title: 'Top Competency',
+      title: 'Kompetensi Teratas',
       value: bestCompetency.competency.name,
-      description: `Average score ${bestCompetency.average_score.toFixed(2)}`,
+      description: `Skor rata-rata ${bestCompetency.average_score.toFixed(2)}`,
     });
   }
 
   if (weakestCompetency) {
     insightItems.push({
-      title: 'Needs Attention',
+      title: 'Butuh Perhatian',
       value: weakestCompetency.competency.name,
-      description: `Average score ${weakestCompetency.average_score.toFixed(2)}`,
+      description: `Skor rata-rata ${weakestCompetency.average_score.toFixed(2)}`,
     });
   }
 
   if (mostEvaluatedCompetency) {
     insightItems.push({
-      title: 'Most Assessed',
+      title: 'Paling Banyak Dinilai',
       value: mostEvaluatedCompetency.competency.name,
-      description: `${mostEvaluatedCompetency.employee_count} employees evaluated`,
+      description: `${mostEvaluatedCompetency.employee_count} pegawai dinilai`,
     });
   }
 
   if (dominantScoreRange) {
     insightItems.push({
-      title: 'Common Rating Band',
+      title: 'Rentang Peringkat Umum',
       value: dominantScoreRange.range,
-      description: `${dominantScoreRange.count} employees in this range`,
+      description: `${dominantScoreRange.count} pegawai dalam rentang ini`,
     });
   }
 
   const scoreDistributionConfig: ChartConfig = {
     count: {
-      label: 'Employees',
+      label: 'Pegawai',
       color: 'hsl(var(--chart-1))',
     },
   };
 
+  const competencyChartData = stats.competency_stats.map((stat) => ({
+    ...stat,
+    roundedAverage: Number(stat.average_score.toFixed(2)),
+  }));
+
+  const maxAverageScore = competencyChartData.reduce((max, stat) => (
+    stat.roundedAverage > max ? stat.roundedAverage : max
+  ), 0);
+
+  const competencyAxisMax = maxAverageScore === 0
+    ? 5
+    : Math.ceil(maxAverageScore / 5) * 5;
+
+  const formatAxisNumber = (value: number) => {
+    if (value >= 100) {
+      return value.toLocaleString('id-ID', { maximumFractionDigits: 0 });
+    }
+    if (value >= 10) {
+      return value.toLocaleString('id-ID', { maximumFractionDigits: 1 });
+    }
+    return value.toLocaleString('id-ID', { maximumFractionDigits: 2 });
+  };
+
+  interface CompetencyTickProps {
+    x?: number;
+    y?: number;
+    payload?: {
+      value?: unknown;
+    };
+  }
+
+  const renderCompetencyTick = (props: CompetencyTickProps) => {
+    const { x = 0, y = 0, payload } = props;
+    const rawValue = payload?.value;
+    const valueText = typeof rawValue === 'string'
+      ? rawValue
+      : typeof rawValue === 'number'
+        ? rawValue.toString()
+        : '';
+
+    const words = valueText.split(/\s+/);
+    const lines: string[] = [];
+    let currentLine = '';
+    const maxChars = 24;
+
+    words.forEach((word) => {
+      const prospective = currentLine.length === 0
+        ? word
+        : `${currentLine} ${word}`;
+
+      if (prospective.length > maxChars) {
+        if (currentLine.length > 0) {
+          lines.push(currentLine);
+        }
+        currentLine = word;
+      } else {
+        currentLine = prospective;
+      }
+    });
+
+    if (currentLine.length > 0) {
+      lines.push(currentLine);
+    }
+
+    return (
+      <text x={x} y={y} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize={12}>
+        {lines.map((line, index) => (
+          <tspan key={index} x={x} dy={index === 0 ? 0 : 14}>
+            {line}
+          </tspan>
+        ))}
+      </text>
+    );
+  };
+
   const competencyAverageConfig: ChartConfig = {
-    average_score: {
-      label: 'Average Score',
+    roundedAverage: {
+      label: 'Skor Rata-rata',
       color: 'hsl(var(--chart-2))',
     },
   };
@@ -156,7 +231,7 @@ export function DashboardPage() {
       setExportMessage(null);
       const extension = format === 'xlsx' ? 'xlsx' : format;
       const filePath = await save({
-        title: 'Export Dataset',
+        title: 'Ekspor Dataset',
         defaultPath: `${stats.dataset.name.replace(/\s+/g, '_').toLowerCase()}.${extension}`,
         filters: [{ name: extension.toUpperCase(), extensions: [extension] }],
       });
@@ -165,9 +240,9 @@ export function DashboardPage() {
         return;
       }
       await exportDataset(parseInt(datasetId), format, filePath);
-      setExportMessage(`Dataset exported as ${extension.toUpperCase()}.`);
+      setExportMessage(`Dataset diekspor sebagai ${extension.toUpperCase()}.`);
     } catch (err) {
-      setExportError(err instanceof Error ? err.message : 'Failed to export dataset');
+      setExportError(err instanceof Error ? err.message : 'Gagal mengekspor dataset');
     } finally {
       setExportLoading(false);
     }
@@ -178,7 +253,7 @@ export function DashboardPage() {
       <div>
         <h1 className="text-3xl font-bold">{stats.dataset.name}</h1>
         <p className="text-muted-foreground mt-1">
-          {stats.dataset.description ?? 'Performance analytics dashboard'}
+          {stats.dataset.description ?? 'Dasbor analitik kinerja'}
         </p>
       </div>
 
@@ -186,52 +261,52 @@ export function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Employees</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Pegawai</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.total_employees}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              Across all competencies
+              Di semua kompetensi
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Average Score</CardTitle>
+            <CardTitle className="text-sm font-medium">Skor Rata-rata</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.average_score.toFixed(2)}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              Overall performance rating
+              Peringkat kinerja keseluruhan
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Competencies</CardTitle>
+            <CardTitle className="text-sm font-medium">Kompetensi</CardTitle>
             <Award className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.total_competencies}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              Skills assessed
+              Keterampilan dinilai
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Scores</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Skor</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.total_scores}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              Performance records
+              Catatan kinerja
             </p>
           </CardContent>
         </Card>
@@ -240,8 +315,8 @@ export function DashboardPage() {
       {insightItems.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Insights</CardTitle>
-            <CardDescription>Highlights derived from the current dataset</CardDescription>
+            <CardTitle>Wawasan</CardTitle>
+            <CardDescription>Sorotan yang berasal dari dataset saat ini</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -262,8 +337,8 @@ export function DashboardPage() {
         {/* Score Distribution */}
         <Card>
           <CardHeader>
-            <CardTitle>Score Distribution</CardTitle>
-            <CardDescription>Distribution of employee performance ratings</CardDescription>
+            <CardTitle>Distribusi Skor</CardTitle>
+            <CardDescription>Distribusi peringkat kinerja pegawai</CardDescription>
           </CardHeader>
           <CardContent>
             <ChartContainer config={scoreDistributionConfig} className="h-[300px]">
@@ -274,7 +349,7 @@ export function DashboardPage() {
                   <YAxis allowDecimals={false} />
                   <ChartTooltip cursor={{ fillOpacity: 0.08 }} />
                   <ChartLegend />
-                  <Bar dataKey="count" fill="var(--color-count)" name="Employees" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="count" fill="var(--color-count)" name="Pegawai" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </ChartContainer>
@@ -284,19 +359,48 @@ export function DashboardPage() {
         {/* Competency Performance */}
         <Card>
           <CardHeader>
-            <CardTitle>Competency Performance</CardTitle>
-            <CardDescription>Average scores by competency</CardDescription>
+            <CardTitle>Kinerja Kompetensi</CardTitle>
+            <CardDescription>Skor rata-rata berdasarkan kompetensi</CardDescription>
           </CardHeader>
           <CardContent>
             <ChartContainer config={competencyAverageConfig} className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stats.competency_stats.slice(0, 8)} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" domain={[0, 4]} />
-                  <YAxis dataKey="competency.name" type="category" width={140} />
-                  <ChartTooltip cursor={{ fillOpacity: 0.08 }} />
+                <BarChart
+                  data={competencyChartData.slice(0, 8)}
+                  layout="vertical"
+                  margin={{ top: 8, right: 16, bottom: 8, left: 16 }}
+                  barCategoryGap={12}
+                >
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis
+                    type="number"
+                    domain={[0, competencyAxisMax]}
+                    tickFormatter={formatAxisNumber}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    dataKey="competency.name"
+                    type="category"
+                    width={220}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={renderCompetencyTick}
+                  />
+                  <ChartTooltip
+                    cursor={{ fillOpacity: 0.08 }}
+                    formatter={(value: number, name: string) => [
+                      Number(value).toLocaleString('id-ID', { maximumFractionDigits: 2 }),
+                      name,
+                    ]}
+                  />
                   <ChartLegend />
-                  <Bar dataKey="average_score" fill="var(--color-average_score)" name="Avg Score" radius={[0, 6, 6, 0]} />
+                  <Bar
+                    dataKey="roundedAverage"
+                    fill="var(--color-roundedAverage)"
+                    name="Skor Rata-rata"
+                    radius={[0, 6, 6, 0]}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </ChartContainer>
@@ -307,17 +411,17 @@ export function DashboardPage() {
       {/* Competency Details Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Competency Details</CardTitle>
-          <CardDescription>Detailed performance breakdown by competency</CardDescription>
+          <CardTitle>Detail Kompetensi</CardTitle>
+          <CardDescription>Rincian kinerja berdasarkan kompetensi</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="rounded-md border">
             <table className="w-full">
               <thead>
                 <tr className="border-b bg-muted/50">
-                  <th className="p-3 text-left font-medium">Competency</th>
-                  <th className="p-3 text-right font-medium">Average Score</th>
-                  <th className="p-3 text-right font-medium">Employee Count</th>
+                  <th className="p-3 text-left font-medium">Kompetensi</th>
+                  <th className="p-3 text-right font-medium">Skor Rata-rata</th>
+                  <th className="p-3 text-right font-medium">Jumlah Pegawai</th>
                 </tr>
               </thead>
               <tbody>
@@ -345,20 +449,20 @@ export function DashboardPage() {
       {/* Quick Actions */}
       <Card>
         <CardHeader>
-          <CardTitle>Quick Actions</CardTitle>
+          <CardTitle>Tindakan Cepat</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-4">
             <Button asChild>
               <Link to={`/employees/${datasetId}`}>
                 <Users className="mr-2 h-4 w-4" />
-                View All Employees
+                Lihat Semua Pegawai
               </Link>
             </Button>
             <Button variant="outline" asChild>
               <Link to="/import">
                 <FileText className="mr-2 h-4 w-4" />
-                Import New Dataset
+                Impor Dataset Baru
               </Link>
             </Button>
             {isTauri() && (
@@ -369,7 +473,7 @@ export function DashboardPage() {
                   onClick={() => void handleExport('csv')}
                 >
                   <Download className="mr-2 h-4 w-4" />
-                  Export CSV
+                  Ekspor CSV
                 </Button>
                 <Button
                   variant="outline"
@@ -377,7 +481,7 @@ export function DashboardPage() {
                   onClick={() => void handleExport('xlsx')}
                 >
                   <Download className="mr-2 h-4 w-4" />
-                  Export Excel
+                  Ekspor Excel
                 </Button>
                 <Button
                   variant="outline"
@@ -385,7 +489,7 @@ export function DashboardPage() {
                   onClick={() => void handleExport('pdf')}
                 >
                   <Download className="mr-2 h-4 w-4" />
-                  Export PDF
+                  Ekspor PDF
                 </Button>
               </>
             )}

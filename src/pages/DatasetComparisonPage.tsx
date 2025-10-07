@@ -50,7 +50,7 @@ export function DatasetComparisonPage() {
       return;
     }
     if (baseDatasetId === comparisonDatasetId) {
-      setError('Please select two different datasets to compare.');
+      setError('Silakan pilih dua dataset yang berbeda untuk dibandingkan.');
       setComparison(null);
       return;
     }
@@ -62,7 +62,7 @@ export function DatasetComparisonPage() {
         const result = await compareDatasets(baseDatasetId, comparisonDatasetId);
         setComparison(result);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to compare datasets');
+        setError(err instanceof Error ? err.message : 'Gagal membandingkan dataset');
         setComparison(null);
       } finally {
         setLoading(false);
@@ -80,27 +80,27 @@ export function DatasetComparisonPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Dataset Comparison</h1>
+        <h1 className="text-3xl font-bold">Perbandingan Dataset</h1>
         <p className="text-muted-foreground mt-1">
-          Benchmark metrics and competency performance between two dataset snapshots.
+          Tolok ukur metrik dan kinerja kompetensi antara dua snapshot dataset.
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Select datasets</CardTitle>
-          <CardDescription>Choose a baseline dataset and a comparison dataset.</CardDescription>
+          <CardTitle>Pilih dataset</CardTitle>
+          <CardDescription>Pilih dataset dasar dan dataset perbandingan.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <p className="text-sm font-medium mb-2">Baseline dataset</p>
+            <p className="text-sm font-medium mb-2">Dataset dasar</p>
             <Select
               disabled={datasetsLoading || datasetOptions.length === 0}
               value={baseDatasetId ? baseDatasetId.toString() : undefined}
               onValueChange={value => setBaseDatasetId(parseInt(value))}
             >
               <SelectTrigger>
-                <SelectValue placeholder={datasetsLoading ? 'Loading datasets...' : 'Select dataset'} />
+                <SelectValue placeholder={datasetsLoading ? 'Memuat dataset...' : 'Pilih dataset'} />
               </SelectTrigger>
               <SelectContent>
                 {datasetOptions.map(option => (
@@ -113,14 +113,14 @@ export function DatasetComparisonPage() {
           </div>
 
           <div>
-            <p className="text-sm font-medium mb-2">Comparison dataset</p>
+            <p className="text-sm font-medium mb-2">Dataset perbandingan</p>
             <Select
               disabled={datasetsLoading || datasetOptions.length < 2}
               value={comparisonDatasetId ? comparisonDatasetId.toString() : undefined}
               onValueChange={value => setComparisonDatasetId(parseInt(value))}
             >
               <SelectTrigger>
-                <SelectValue placeholder={datasetOptions.length < 2 ? 'Need at least two datasets' : 'Select dataset'} />
+                <SelectValue placeholder={datasetOptions.length < 2 ? 'Butuh setidaknya dua dataset' : 'Pilih dataset'} />
               </SelectTrigger>
               <SelectContent>
                 {datasetOptions
@@ -151,7 +151,7 @@ export function DatasetComparisonPage() {
 
       {!loading && !comparison && !error && (
         <Alert>
-          <AlertDescription>Select two different datasets to view their comparison.</AlertDescription>
+          <AlertDescription>Pilih dua dataset yang berbeda untuk melihat perbandingannya.</AlertDescription>
         </Alert>
       )}
 
@@ -160,7 +160,7 @@ export function DatasetComparisonPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Average Score Delta</CardTitle>
+                <CardTitle className="text-sm font-medium">Delta Skor Rata-rata</CardTitle>
                 {comparison.average_delta >= 0 ? (
                   <TrendingUp className="h-4 w-4 text-green-600" />
                 ) : (
@@ -179,24 +179,24 @@ export function DatasetComparisonPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm font-medium">Employee Count</CardTitle>
+                <CardTitle className="text-sm font-medium">Jumlah Pegawai</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{comparison.base.total_employees} → {comparison.comparison.total_employees}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Change of {comparison.comparison.total_employees - comparison.base.total_employees}
+                  Perubahan {comparison.comparison.total_employees - comparison.base.total_employees}
                 </p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm font-medium">Competency Coverage</CardTitle>
+                <CardTitle className="text-sm font-medium">Cakupan Kompetensi</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{comparison.base.total_competencies} → {comparison.comparison.total_competencies}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Change of {comparison.comparison.total_competencies - comparison.base.total_competencies}
+                  Perubahan {comparison.comparison.total_competencies - comparison.base.total_competencies}
                 </p>
               </CardContent>
             </Card>
@@ -204,17 +204,17 @@ export function DatasetComparisonPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Competency Performance Changes</CardTitle>
-              <CardDescription>Positive values indicate improvements in the comparison dataset.</CardDescription>
+              <CardTitle>Perubahan Kinerja Kompetensi</CardTitle>
+              <CardDescription>Nilai positif menunjukkan peningkatan pada dataset perbandingan.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="rounded-md border overflow-hidden">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Competency</TableHead>
-                      <TableHead className="text-right">Baseline Avg</TableHead>
-                      <TableHead className="text-right">Comparison Avg</TableHead>
+                      <TableHead>Kompetensi</TableHead>
+                      <TableHead className="text-right">Rata-rata Dasar</TableHead>
+                      <TableHead className="text-right">Rata-rata Perbandingan</TableHead>
                       <TableHead className="text-right">Delta</TableHead>
                     </TableRow>
                   </TableHeader>

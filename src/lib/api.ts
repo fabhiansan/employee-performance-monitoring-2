@@ -4,9 +4,9 @@ import type {
   CSVPreview,
   ParsedEmployee,
   ParsedScore,
-  ImportRequest,
   ImportResult,
   CreateRatingMapping,
+  Employee,
   DatasetStats,
   EmployeeListResult,
   EmployeePerformance,
@@ -15,6 +15,16 @@ import type {
   Summary,
   GeneratedSummary,
   DatasetComparison,
+  UpdateDatasetRequest,
+  MergeDatasetsRequest,
+  MergeDatasetsResult,
+  EmployeeImportRequest,
+  EmployeeImportResult,
+  PerformanceImportRequest,
+  PerformanceAppendRequest,
+  UpdateEmployee,
+  DatasetEmployeeAppendResult,
+  SortState,
 } from '@/types/models';
 import { BrowserCSVParser } from './csv-parser';
 import { browserStorage } from './browser-storage';
@@ -72,6 +82,100 @@ export async function listDatasets(): Promise<Dataset[]> {
   return browserStorage.listDatasets();
 }
 
+export async function listAllEmployees(): Promise<Employee[]> {
+  if (isTauri()) {
+    return invoke('list_all_employees');
+  }
+  return browserStorage.listAllEmployees();
+}
+
+export async function bulkDeleteEmployees(ids: number[]): Promise<number> {
+  if (!Array.isArray(ids) || ids.length === 0) return 0;
+  if (isTauri()) {
+    return invoke('bulk_delete_employees', { ids });
+  }
+  // Browser fallback not implemented
+  return 0;
+}
+
+export async function bulkUpdateEmployees(updates: UpdateEmployee[]): Promise<number> {
+  if (!Array.isArray(updates) || updates.length === 0) return 0;
+  if (isTauri()) {
+    return invoke('bulk_update_employees', { updates });
+  }
+  // Browser fallback not implemented
+  return 0;
+}
+
+export async function appendDatasetEmployees(
+  datasetId: number,
+  employees: ParsedEmployee[]
+): Promise<DatasetEmployeeAppendResult> {
+  if (!Number.isFinite(datasetId)) {
+    throw new Error('A valid dataset is required');
+  }
+
+  const sanitizeOptional = (value: string | null | undefined): string | null => {
+    if (value === undefined || value === null) {
+      return null;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  };
+
+  const unique = new Map<string, ParsedEmployee>();
+  for (const employee of employees) {
+    const trimmed = employee.name.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const normalized = trimmed
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const sanitized: ParsedEmployee = {
+      name: trimmed,
+      nip: sanitizeOptional(employee.nip),
+      gol: sanitizeOptional(employee.gol),
+      jabatan: sanitizeOptional(employee.jabatan),
+      sub_jabatan: sanitizeOptional(employee.sub_jabatan),
+    };
+
+    const existing = unique.get(normalized);
+    if (existing) {
+      if (!existing.nip && sanitized.nip) existing.nip = sanitized.nip;
+      if (!existing.gol && sanitized.gol) existing.gol = sanitized.gol;
+      if (!existing.jabatan && sanitized.jabatan) existing.jabatan = sanitized.jabatan;
+      if (!existing.sub_jabatan && sanitized.sub_jabatan) {
+        existing.sub_jabatan = sanitized.sub_jabatan;
+      }
+    } else {
+      unique.set(normalized, sanitized);
+    }
+  }
+
+  if (unique.size === 0) {
+    throw new Error('Provide at least one employee to append');
+  }
+
+  const payload = Array.from(unique.values());
+
+  if (isTauri()) {
+    return invoke('append_dataset_employees', {
+      request: {
+        dataset_id: datasetId,
+        employees: payload,
+      },
+    });
+  }
+
+  return browserStorage.appendDatasetEmployees(datasetId, payload);
+}
+
 export async function getDataset(id: number): Promise<Dataset> {
   if (isTauri()) {
     return invoke('get_dataset', { id });
@@ -86,12 +190,130 @@ export async function deleteDataset(id: number): Promise<void> {
   return browserStorage.deleteDataset(id);
 }
 
-// Import Commands
-export async function importDataset(request: ImportRequest): Promise<ImportResult> {
-  if (isTauri()) {
-    return invoke('import_dataset', { request });
+export async function updateDataset(id: number, payload: UpdateDatasetRequest): Promise<Dataset> {
+  const name = payload.name.trim();
+  if (!name) {
+    throw new Error('Dataset name is required');
   }
-  return browserStorage.importDataset(request);
+
+  const description = payload.description === undefined
+    ? undefined
+    : payload.description === null
+      ? null
+      : payload.description.trim().length === 0
+        ? null
+        : payload.description.trim();
+
+  if (isTauri()) {
+    return invoke('update_dataset', {
+      id,
+      name,
+      description: description ?? null,
+    });
+  }
+
+  return browserStorage.updateDataset(id, {
+    name,
+    description: description ?? null,
+  });
+}
+
+// Import Commands
+export async function importEmployees(request: EmployeeImportRequest): Promise<EmployeeImportResult> {
+  const sanitizedEmployees: ParsedEmployee[] = request.employees.map((employee) => ({
+    name: employee.name.trim(),
+    nip: employee.nip ? (employee.nip.trim() || null) : null,
+    gol: employee.gol ? (employee.gol.trim() || null) : null,
+    jabatan: employee.jabatan ? (employee.jabatan.trim() || null) : null,
+    sub_jabatan: employee.sub_jabatan ? (employee.sub_jabatan.trim() || null) : null,
+  }));
+
+  if (sanitizedEmployees.some((employee) => employee.name.length === 0)) {
+    throw new Error('Employee name cannot be blank');
+  }
+
+  const sanitized: EmployeeImportRequest = {
+    employees: sanitizedEmployees,
+  };
+
+  if (isTauri()) {
+    return invoke('import_employees', { request: sanitized });
+  }
+  return browserStorage.importEmployees(sanitized);
+}
+
+export async function importPerformanceDataset(
+  request: PerformanceImportRequest,
+): Promise<ImportResult> {
+  const datasetName = request.dataset_name.trim();
+  if (!datasetName) {
+    throw new Error('Dataset name is required');
+  }
+
+  const description = request.dataset_description === null
+    ? null
+    : request.dataset_description?.trim().length
+      ? request.dataset_description.trim()
+      : null;
+
+  const sanitizedScores: ParsedScore[] = request.scores.map((score) => ({
+    employee_name: score.employee_name.trim(),
+    competency: score.competency.trim(),
+    value: score.value.trim(),
+  }));
+
+  if (sanitizedScores.some((score) => score.employee_name.length === 0)) {
+    throw new Error('All scores must reference a valid employee');
+  }
+
+  const sanitizedMappings: CreateRatingMapping[] = request.rating_mappings.map((mapping) => ({
+    ...mapping,
+    text_value: mapping.text_value.trim(),
+    numeric_value: Number(mapping.numeric_value),
+  }));
+
+  const payload: PerformanceImportRequest = {
+    dataset_name: datasetName,
+    dataset_description: description,
+    source_file: request.source_file,
+    employee_names: request.employee_names.map((name) => name.trim()).filter((name) => name.length > 0),
+    scores: sanitizedScores,
+    rating_mappings: sanitizedMappings,
+  };
+
+  if (isTauri()) {
+    return invoke('import_performance_dataset', { request: payload });
+  }
+  return browserStorage.importPerformanceDataset(payload);
+}
+
+export async function importPerformanceIntoDataset(
+  request: PerformanceAppendRequest,
+): Promise<ImportResult> {
+  const sanitizedScores: ParsedScore[] = request.scores.map((score) => ({
+    employee_name: score.employee_name.trim(),
+    competency: score.competency.trim(),
+    value: score.value.trim(),
+  }));
+
+  const sanitizedMappings: CreateRatingMapping[] = request.rating_mappings.map((mapping) => ({
+    ...mapping,
+    text_value: mapping.text_value.trim(),
+    numeric_value: Number(mapping.numeric_value),
+  }));
+
+  const payload: PerformanceAppendRequest = {
+    dataset_id: request.dataset_id,
+    employee_names: request.employee_names.map((n) => n.trim()).filter(Boolean),
+    scores: sanitizedScores,
+    rating_mappings: sanitizedMappings,
+  };
+
+  if (isTauri()) {
+    return invoke('import_performance_into_dataset', { request: payload });
+  }
+  // Browser fallback is not implemented for appending into existing dataset
+  throw new Error('Appending into existing dataset is only available in the desktop application.');
 }
 
 export async function getDefaultRatingMappings(): Promise<CreateRatingMapping[]> {
@@ -113,12 +335,20 @@ export async function listEmployees(
   datasetId: number,
   search?: string,
   limit?: number,
-  offset?: number
+  offset?: number,
+  sort?: SortState,
 ): Promise<EmployeeListResult> {
   if (isTauri()) {
-    return invoke('list_employees', { datasetId, search, limit, offset });
+    return invoke('list_employees', {
+      datasetId,
+      search,
+      limit,
+      offset,
+      sortBy: sort?.column,
+      sortDirection: sort?.direction,
+    });
   }
-  return browserStorage.listEmployees(datasetId, search, limit, offset);
+  return browserStorage.listEmployees(datasetId, search, limit, offset, sort);
 }
 
 export async function getEmployeePerformance(
@@ -175,6 +405,17 @@ export async function exportEmployeeSummary(
   throw new Error('Export summary is only available in the desktop application.');
 }
 
+export async function exportEmployeeReport(
+  datasetId: number,
+  employeeId: number,
+  filePath: string
+): Promise<void> {
+  if (isTauri()) {
+    return invoke('export_employee_report_pdf', { datasetId, employeeId, filePath });
+  }
+  throw new Error('Employee report export is only available in the desktop application.');
+}
+
 export async function exportDataset(
   datasetId: number,
   format: 'csv' | 'xlsx' | 'pdf',
@@ -194,4 +435,34 @@ export async function compareDatasets(
     return invoke('compare_datasets', { baseDatasetId, comparisonDatasetId });
   }
   return browserStorage.compareDatasets(baseDatasetId, comparisonDatasetId);
+}
+
+export async function mergeDatasets(request: MergeDatasetsRequest): Promise<MergeDatasetsResult> {
+  const uniqueIds = request.source_dataset_ids.filter((id, index, array) => array.indexOf(id) === index);
+  if (uniqueIds.length < 2) {
+    throw new Error('Select at least two datasets to merge');
+  }
+
+  const targetName = request.target_name.trim();
+  if (!targetName) {
+    throw new Error('Target dataset name is required');
+  }
+
+  const description = request.target_description
+    ? request.target_description.trim().length === 0
+      ? null
+      : request.target_description.trim()
+    : null;
+
+  const payload: MergeDatasetsRequest = {
+    source_dataset_ids: uniqueIds,
+    target_name: targetName,
+    target_description: description,
+  };
+
+  if (isTauri()) {
+    return invoke('merge_datasets', { request: payload });
+  }
+
+  return browserStorage.mergeDatasets(payload);
 }

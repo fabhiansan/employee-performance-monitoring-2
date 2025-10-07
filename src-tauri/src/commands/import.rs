@@ -468,9 +468,13 @@ pub async fn import_performance_into_dataset(
 
     for name in &request.employee_names {
         let trimmed = name.trim();
-        if trimmed.is_empty() { continue; }
+        if trimmed.is_empty() {
+            continue;
+        }
         let normalized = normalize_name(trimmed);
-        normalized_to_display.entry(normalized).or_insert_with(|| trimmed.to_string());
+        normalized_to_display
+            .entry(normalized)
+            .or_insert_with(|| trimmed.to_string());
     }
 
     for score in &request.scores {
@@ -479,7 +483,9 @@ pub async fn import_performance_into_dataset(
             return Err("Score is associated with a blank employee name".to_string());
         }
         let normalized = normalize_name(trimmed);
-        normalized_to_display.entry(normalized).or_insert_with(|| trimmed.to_string());
+        normalized_to_display
+            .entry(normalized)
+            .or_insert_with(|| trimmed.to_string());
     }
 
     for (normalized, display_name) in normalized_to_display.clone() {
@@ -525,26 +531,26 @@ pub async fn import_performance_into_dataset(
 
     let mut competency_map: HashMap<String, i64> = HashMap::new();
     for (idx, comp_name) in competency_names.iter().enumerate() {
-        let competency = match sqlx::query_as::<_, Competency>("SELECT * FROM competencies WHERE name = ?")
-            .bind(comp_name)
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(|e| format!("Failed to fetch competency: {}", e))? {
+        let competency =
+            match sqlx::query_as::<_, Competency>("SELECT * FROM competencies WHERE name = ?")
+                .bind(comp_name)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(|e| format!("Failed to fetch competency: {}", e))?
+            {
                 Some(c) => c,
-                None => {
-                    sqlx::query_as::<_, Competency>(
-                        r#"
+                None => sqlx::query_as::<_, Competency>(
+                    r#"
                         INSERT INTO competencies (name, display_order)
                         VALUES (?, ?)
                         RETURNING *
                         "#,
-                    )
-                    .bind(comp_name)
-                    .bind(idx as i32)
-                    .fetch_one(&mut *tx)
-                    .await
-                    .map_err(|e| format!("Failed to insert competency {}: {}", comp_name, e))?
-                }
+                )
+                .bind(comp_name)
+                .bind(idx as i32)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|e| format!("Failed to insert competency {}: {}", comp_name, e))?,
             };
         competency_map.insert(comp_name.clone(), competency.id);
     }
@@ -753,7 +759,12 @@ pub async fn append_dataset_employees(
         .bind(employee.id)
         .fetch_one(&mut *tx)
         .await
-        .map_err(|e| format!("Failed to verify dataset link for employee {}: {}", data.name, e))?;
+        .map_err(|e| {
+            format!(
+                "Failed to verify dataset link for employee {}: {}",
+                data.name, e
+            )
+        })?;
 
         if existing_link == 0 {
             sqlx::query(

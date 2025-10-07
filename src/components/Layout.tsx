@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { Link, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { FileUp, Users, Home, GitCompare } from 'lucide-react';
+import { FileUp, Users, Home, GitCompare, Database, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useDatasets } from '@/lib/dataset-context';
 import {
@@ -13,10 +13,12 @@ import {
 import iconUrl from '@/assets/icon.png';
 
 const navigation = [
-  { name: 'Import', href: '/import', icon: FileUp },
-  { name: 'Dashboard', href: '/dashboard', icon: Home, requiresDataset: true },
-  { name: 'Employees', href: '/employees', icon: Users, requiresDataset: true },
-  { name: 'Compare', href: '/compare', icon: GitCompare },
+  { name: 'Dasbor', href: '/dashboard', icon: Home, requiresDataset: true },
+  { name: 'Pegawai', href: '/employees', icon: Users, requiresDataset: false },
+  { name: 'Bandingkan', href: '/compare', icon: GitCompare },
+  { name: 'Laporan', href: '/report', icon: FileText, requiresDataset: true },
+  { name: 'Kelola Data', href: '/data-management', icon: Database },
+  { name: 'Impor', href: '/import', icon: FileUp },
 ];
 
 export function Layout() {
@@ -44,26 +46,31 @@ export function Layout() {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return;
     selectDataset(parsed);
-    let basePath = '/dashboard';
-    if (location.pathname.startsWith('/employees')) {
-      basePath = '/employees';
-    } else if (location.pathname.startsWith('/dashboard')) {
-      basePath = '/dashboard';
-    }
+    const datasetAwarePrefixes = ['/employees', '/dashboard', '/report'];
+    const matchedPrefix = datasetAwarePrefixes.find((prefix) =>
+      location.pathname.startsWith(prefix)
+    );
+    const basePath = matchedPrefix ?? '/dashboard';
     void navigate(`${basePath}/${parsed}`);
   };
 
   const navigationItems = useMemo(() => {
     return navigation.map((item) => {
       const requiresDataset = Boolean(item.requiresDataset);
+      const datasetPath = selectedDatasetId !== null ? `${item.href}/${selectedDatasetId}` : null;
+      const shouldAppendDataset = item.href === '/employees' && datasetPath !== null;
       const isDisabled = requiresDataset && !selectedDatasetId;
-      const targetHref = requiresDataset && selectedDatasetId
-        ? `${item.href}/${selectedDatasetId}`
-        : item.href;
+      const targetHref = shouldAppendDataset
+        ? datasetPath
+        : requiresDataset && datasetPath
+          ? datasetPath
+          : item.href;
 
-      const isActive = requiresDataset && selectedDatasetId
-        ? location.pathname.startsWith(`${item.href}/${selectedDatasetId}`)
-        : location.pathname === item.href;
+      const isActive = item.href === '/employees'
+        ? location.pathname === item.href || (datasetPath ? location.pathname.startsWith(datasetPath) : false)
+        : requiresDataset && datasetPath
+          ? location.pathname.startsWith(datasetPath)
+          : location.pathname === item.href;
 
       return {
         ...item,
@@ -79,11 +86,11 @@ export function Layout() {
       <header className="border-b bg-card sticky top-0 z-10">
         <div className="flex items-center gap-6 px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center gap-3">
-            <img src={iconUrl} alt="Employee Performance Analytics" className="h-8 w-8 rounded-md" />
+            <img src={iconUrl} alt="Analitik Kinerja Pegawai" className="h-8 w-8 rounded-md" />
             <div>
-              <h1 className="text-xl font-bold">Employee Performance Analytics</h1>
+              <h1 className="text-xl font-bold">Analitik Kinerja Pegawai</h1>
               <p className="text-xs text-muted-foreground">
-                Import, analyze, and manage performance data
+                Impor, analisis, dan kelola data kinerja
               </p>
             </div>
           </div>
@@ -99,15 +106,15 @@ export function Layout() {
                   <SelectValue
                     placeholder={
                       loading
-                        ? 'Loading datasets...'
-                        : 'No datasets available'
+                        ? 'Memuat dataset...'
+                        : 'Tidak ada dataset tersedia'
                     }
                   />
                 </SelectTrigger>
                 <SelectContent>
                   {datasets.length === 0 ? (
                     <SelectItem value="placeholder" disabled>
-                      No datasets available
+                      Tidak ada dataset tersedia
                     </SelectItem>
                   ) : (
                     datasets.map((dataset) => (
@@ -122,7 +129,7 @@ export function Layout() {
             {selectedDataset && (
               <div className="hidden md:block text-right text-xs text-muted-foreground">
                 <p className="font-medium text-foreground">{selectedDataset.name}</p>
-                <p>Updated {new Date(selectedDataset.updated_at).toLocaleString()}</p>
+                <p>Diperbarui {new Date(selectedDataset.updated_at).toLocaleString()}</p>
               </div>
             )}
           </div>

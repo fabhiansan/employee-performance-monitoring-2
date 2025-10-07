@@ -533,20 +533,26 @@ fn determine_position_type(employee: &Employee) -> PositionType {
 }
 
 fn render_report_pdf(context: &EmployeeReportContext, file_path: &str) -> Result<(), String> {
-    let mut document = Pdf::create(file_path)
-        .map_err(|e| format!("Failed to create PDF: {}", e))?;
+    let mut document =
+        Pdf::create(file_path).map_err(|e| format!("Failed to create PDF: {}", e))?;
 
     // Page 1: Cover/criteria (landscape A4)
     document
-        .render_page(842.0, 595.0, |canvas| draw_cover_page_landscape(canvas, context))
+        .render_page(842.0, 595.0, |canvas| {
+            draw_cover_page_landscape(canvas, context)
+        })
         .map_err(|e| format!("Failed to render cover page: {}", e))?;
 
     // Page 2: Worksheet/evaluation (landscape A4)
     document
-        .render_page(842.0, 595.0, |canvas| draw_worksheet_page_landscape(canvas, context))
+        .render_page(842.0, 595.0, |canvas| {
+            draw_worksheet_page_landscape(canvas, context)
+        })
         .map_err(|e| format!("Failed to render worksheet page: {}", e))?;
 
-    document.finish().map_err(|e| format!("Failed to save PDF: {}", e))
+    document
+        .finish()
+        .map_err(|e| format!("Failed to save PDF: {}", e))
 }
 
 fn fmt_id(value: f64) -> String {
@@ -560,17 +566,41 @@ fn draw_cover_page_landscape(
     let mut y = 555.0;
 
     // Header with logo placeholder and agency info
-    canvas.left_text(50.0, y, BuiltinFont::Helvetica_Bold, 11.0, "PEMERINTAH PROVINSI KALIMANTAN SELATAN")?;
+    canvas.left_text(
+        50.0,
+        y,
+        BuiltinFont::Helvetica_Bold,
+        11.0,
+        "PEMERINTAH PROVINSI KALIMANTAN SELATAN",
+    )?;
     y -= 16.0;
     canvas.left_text(50.0, y, BuiltinFont::Helvetica_Bold, 14.0, "DINAS SOSIAL")?;
     y -= 20.0;
 
     // Contact information
-    canvas.left_text(50.0, y, BuiltinFont::Helvetica, 9.0, "Jalan Letjen R. Soeprapto No. 8 Banjarmasin Kode Pos 70114")?;
+    canvas.left_text(
+        50.0,
+        y,
+        BuiltinFont::Helvetica,
+        9.0,
+        "Jalan Letjen R. Soeprapto No. 8 Banjarmasin Kode Pos 70114",
+    )?;
     y -= 11.0;
-    canvas.left_text(50.0, y, BuiltinFont::Helvetica, 9.0, "Telepon : (0511) 335 0825, Fax. (0511) 335 4193")?;
+    canvas.left_text(
+        50.0,
+        y,
+        BuiltinFont::Helvetica,
+        9.0,
+        "Telepon : (0511) 335 0825, Fax. (0511) 335 4193",
+    )?;
     y -= 11.0;
-    canvas.left_text(50.0, y, BuiltinFont::Helvetica, 9.0, "Email: dinsosialselprov@gmail.com Website: dinsoss.kalselprov.go.id")?;
+    canvas.left_text(
+        50.0,
+        y,
+        BuiltinFont::Helvetica,
+        9.0,
+        "Email: dinsosialselprov@gmail.com Website: dinsoss.kalselprov.go.id",
+    )?;
     y -= 25.0;
 
     // Title
@@ -602,7 +632,13 @@ fn draw_cover_page_landscape(
     let year_line = format!("Semester I Tahun {} berdasarkan dari Kualitas Kinerja dengan melalui form yang disebarkan tiap akhir", year);
     canvas.left_text(50.0, y, BuiltinFont::Helvetica, 10.0, &year_line)?;
     y -= 12.0;
-    canvas.left_text(50.0, y, BuiltinFont::Helvetica, 10.0, "semester, dengan kriteria penilaian sebagai berikut :")?;
+    canvas.left_text(
+        50.0,
+        y,
+        BuiltinFont::Helvetica,
+        10.0,
+        "semester, dengan kriteria penilaian sebagai berikut :",
+    )?;
     y -= 20.0;
 
     // Table: Kriteria dan Bobot
@@ -613,7 +649,13 @@ fn draw_cover_page_landscape(
 
     // A. Perilaku Kerja (30%)
     canvas.left_text(50.0, y, BuiltinFont::Helvetica_Bold, 10.0, "A.")?;
-    canvas.left_text(120.0, y, BuiltinFont::Helvetica_Bold, 10.0, "PERILAKU KERJA")?;
+    canvas.left_text(
+        120.0,
+        y,
+        BuiltinFont::Helvetica_Bold,
+        10.0,
+        "PERILAKU KERJA",
+    )?;
     canvas.left_text(720.0, y, BuiltinFont::Helvetica_Bold, 10.0, "30%")?;
     y -= 12.0;
 
@@ -632,7 +674,13 @@ fn draw_cover_page_landscape(
     // B. Kualitas Kinerja (50%)
     y -= 4.0;
     canvas.left_text(50.0, y, BuiltinFont::Helvetica_Bold, 10.0, "B.")?;
-    canvas.left_text(120.0, y, BuiltinFont::Helvetica_Bold, 10.0, "KUALITAS KINERJA")?;
+    canvas.left_text(
+        120.0,
+        y,
+        BuiltinFont::Helvetica_Bold,
+        10.0,
+        "KUALITAS KINERJA",
+    )?;
     canvas.left_text(720.0, y, BuiltinFont::Helvetica_Bold, 10.0, "50%")?;
     y -= 12.0;
 
@@ -649,7 +697,13 @@ fn draw_cover_page_landscape(
     // C. Penilaian Pimpinan (20%)
     y -= 4.0;
     canvas.left_text(50.0, y, BuiltinFont::Helvetica_Bold, 10.0, "C.")?;
-    canvas.left_text(120.0, y, BuiltinFont::Helvetica_Bold, 10.0, "PENILAIAN PIMPINAN")?;
+    canvas.left_text(
+        120.0,
+        y,
+        BuiltinFont::Helvetica_Bold,
+        10.0,
+        "PENILAIAN PIMPINAN",
+    )?;
     canvas.left_text(720.0, y, BuiltinFont::Helvetica_Bold, 10.0, "20%")?;
     y -= 14.0;
 
@@ -660,7 +714,13 @@ fn draw_cover_page_landscape(
     y -= 18.0;
 
     // Rating bands
-    canvas.left_text(50.0, y, BuiltinFont::Helvetica, 9.5, "Predikat skor akhir penilaian Penilaian Pegawai dengan kinerja terbaik sebagai berikut :")?;
+    canvas.left_text(
+        50.0,
+        y,
+        BuiltinFont::Helvetica,
+        9.5,
+        "Predikat skor akhir penilaian Penilaian Pegawai dengan kinerja terbaik sebagai berikut :",
+    )?;
     y -= 12.0;
 
     let bands = [
@@ -669,7 +729,13 @@ fn draw_cover_page_landscape(
         ("KURANG BAIK", "65,00 - 69,99"),
     ];
     for (i, (label, thr)) in bands.iter().enumerate() {
-        canvas.left_text(70.0, y, BuiltinFont::Helvetica, 9.5, &format!("{}. {} : {}", (b'a' + i as u8) as char, label, thr))?;
+        canvas.left_text(
+            70.0,
+            y,
+            BuiltinFont::Helvetica,
+            9.5,
+            &format!("{}. {} : {}", (b'a' + i as u8) as char, label, thr),
+        )?;
         y -= 11.0;
     }
     y -= 12.0;
@@ -682,7 +748,7 @@ fn draw_cover_page_landscape(
             } else {
                 "Pegawai".to_string()
             }
-        },
+        }
         PositionType::Staff => "Pegawai".to_string(),
     };
 
@@ -709,17 +775,41 @@ fn draw_worksheet_page_landscape(
     let mut y = 555.0;
 
     // Header with logo placeholder and contact info
-    canvas.left_text(50.0, y, BuiltinFont::Helvetica_Bold, 11.0, "PEMERINTAH PROVINSI KALIMANTAN SELATAN")?;
+    canvas.left_text(
+        50.0,
+        y,
+        BuiltinFont::Helvetica_Bold,
+        11.0,
+        "PEMERINTAH PROVINSI KALIMANTAN SELATAN",
+    )?;
     y -= 16.0;
     canvas.left_text(50.0, y, BuiltinFont::Helvetica_Bold, 14.0, "DINAS SOSIAL")?;
     y -= 20.0;
 
     // Contact information
-    canvas.left_text(50.0, y, BuiltinFont::Helvetica, 9.0, "Jalan Letjen R. Soeprapto No. 8 Banjarmasin Kode Pos 70114")?;
+    canvas.left_text(
+        50.0,
+        y,
+        BuiltinFont::Helvetica,
+        9.0,
+        "Jalan Letjen R. Soeprapto No. 8 Banjarmasin Kode Pos 70114",
+    )?;
     y -= 11.0;
-    canvas.left_text(50.0, y, BuiltinFont::Helvetica, 9.0, "Telepon : (0511) 335 0825, Fax. (0511) 335 4193")?;
+    canvas.left_text(
+        50.0,
+        y,
+        BuiltinFont::Helvetica,
+        9.0,
+        "Telepon : (0511) 335 0825, Fax. (0511) 335 4193",
+    )?;
     y -= 11.0;
-    canvas.left_text(50.0, y, BuiltinFont::Helvetica, 9.0, "Email: dinsosialselprov@gmail.com Website: dinsoss.kalselprov.go.id")?;
+    canvas.left_text(
+        50.0,
+        y,
+        BuiltinFont::Helvetica,
+        9.0,
+        "Email: dinsosialselprov@gmail.com Website: dinsoss.kalselprov.go.id",
+    )?;
     y -= 25.0;
 
     // Title
@@ -739,7 +829,10 @@ fn draw_worksheet_page_landscape(
         y,
         BuiltinFont::Helvetica_Bold,
         12.0,
-        &format!("KERTAS KERJA EVALUASI PENGUKURAN KINERJA {}", position_title),
+        &format!(
+            "KERTAS KERJA EVALUASI PENGUKURAN KINERJA {}",
+            position_title
+        ),
     )?;
     y -= 14.0;
     canvas.center_text(
@@ -761,7 +854,13 @@ fn draw_worksheet_page_landscape(
 
     // Table header
     canvas.left_text(50.0, y, BuiltinFont::Helvetica_Bold, 10.5, "NO.")?;
-    canvas.left_text(120.0, y, BuiltinFont::Helvetica_Bold, 10.5, "KOMPONEN / KRITERIA")?;
+    canvas.left_text(
+        120.0,
+        y,
+        BuiltinFont::Helvetica_Bold,
+        10.5,
+        "KOMPONEN / KRITERIA",
+    )?;
     canvas.left_text(660.0, y, BuiltinFont::Helvetica_Bold, 10.5, "BOBOT")?;
     canvas.left_text(750.0, y, BuiltinFont::Helvetica_Bold, 10.5, "NILAI")?;
     y -= 4.0;
@@ -773,9 +872,33 @@ fn draw_worksheet_page_landscape(
 
     // I. PERILAKU KERJA (30%)
     canvas.left_text(50.0, y, BuiltinFont::Helvetica_Bold, 10.0, "I.")?;
-    canvas.left_text(120.0, y, BuiltinFont::Helvetica_Bold, 10.0, "PERILAKU KERJA (30%)")?;
-    canvas.left_text(660.0, y, BuiltinFont::Helvetica_Bold, 10.0, &fmt_id(PERILAKU_CAP))?;
-    canvas.left_text(750.0, y, BuiltinFont::Helvetica_Bold, 10.0, &fmt_id(context.component_sections.get(0).map(|s| s.subtotal).unwrap_or(0.0)))?;
+    canvas.left_text(
+        120.0,
+        y,
+        BuiltinFont::Helvetica_Bold,
+        10.0,
+        "PERILAKU KERJA (30%)",
+    )?;
+    canvas.left_text(
+        660.0,
+        y,
+        BuiltinFont::Helvetica_Bold,
+        10.0,
+        &fmt_id(PERILAKU_CAP),
+    )?;
+    canvas.left_text(
+        750.0,
+        y,
+        BuiltinFont::Helvetica_Bold,
+        10.0,
+        &fmt_id(
+            context
+                .component_sections
+                .get(0)
+                .map(|s| s.subtotal)
+                .unwrap_or(0.0),
+        ),
+    )?;
     y -= 12.0;
 
     // Perilaku kerja breakdown
@@ -784,20 +907,50 @@ fn draw_worksheet_page_landscape(
         let num = format!("{}", i + 1);
         canvas.left_text(120.0, y, BuiltinFont::Helvetica, 9.5, &num)?;
         canvas.left_text(140.0, y, BuiltinFont::Helvetica, 9.5, &component.parameter)?;
-        canvas.left_text(750.0, y, BuiltinFont::Helvetica, 9.5, &fmt_id(component.weighted_score))?;
+        canvas.left_text(
+            750.0,
+            y,
+            BuiltinFont::Helvetica,
+            9.5,
+            &fmt_id(component.weighted_score),
+        )?;
         y -= 11.0;
     }
     y -= 4.0;
 
     // II. KUALITAS KINERJA (50%)
     canvas.left_text(50.0, y, BuiltinFont::Helvetica_Bold, 10.0, "II.")?;
-    canvas.left_text(120.0, y, BuiltinFont::Helvetica_Bold, 10.0, "KUALITAS KINERJA (50%)")?;
+    canvas.left_text(
+        120.0,
+        y,
+        BuiltinFont::Helvetica_Bold,
+        10.0,
+        "KUALITAS KINERJA (50%)",
+    )?;
     let kualitas_cap = match context.position_type {
         PositionType::Eselon => KUALITAS_CAP_ESELON,
         PositionType::Staff => KUALITAS_CAP_STAFF,
     };
-    canvas.left_text(660.0, y, BuiltinFont::Helvetica_Bold, 10.0, &fmt_id(kualitas_cap))?;
-    canvas.left_text(750.0, y, BuiltinFont::Helvetica_Bold, 10.0, &fmt_id(context.component_sections.get(1).map(|s| s.subtotal).unwrap_or(0.0)))?;
+    canvas.left_text(
+        660.0,
+        y,
+        BuiltinFont::Helvetica_Bold,
+        10.0,
+        &fmt_id(kualitas_cap),
+    )?;
+    canvas.left_text(
+        750.0,
+        y,
+        BuiltinFont::Helvetica_Bold,
+        10.0,
+        &fmt_id(
+            context
+                .component_sections
+                .get(1)
+                .map(|s| s.subtotal)
+                .unwrap_or(0.0),
+        ),
+    )?;
     y -= 12.0;
 
     // Kualitas kinerja breakdown
@@ -806,30 +959,90 @@ fn draw_worksheet_page_landscape(
         let num = format!("{}", i + 1);
         canvas.left_text(120.0, y, BuiltinFont::Helvetica, 9.5, &num)?;
         canvas.left_text(140.0, y, BuiltinFont::Helvetica, 9.5, &component.parameter)?;
-        canvas.left_text(750.0, y, BuiltinFont::Helvetica, 9.5, &fmt_id(component.weighted_score))?;
+        canvas.left_text(
+            750.0,
+            y,
+            BuiltinFont::Helvetica,
+            9.5,
+            &fmt_id(component.weighted_score),
+        )?;
         y -= 11.0;
     }
     y -= 4.0;
 
     // III. PENILAIAN PIMPINAN (20%)
     canvas.left_text(50.0, y, BuiltinFont::Helvetica_Bold, 10.0, "III.")?;
-    canvas.left_text(120.0, y, BuiltinFont::Helvetica_Bold, 10.0, "PENILAIAN PIMPINAN (20%)")?;
-    canvas.left_text(660.0, y, BuiltinFont::Helvetica_Bold, 10.0, &fmt_id(LEADERSHIP_CAP))?;
-    canvas.left_text(750.0, y, BuiltinFont::Helvetica_Bold, 10.0, &fmt_id(context.component_sections.get(2).map(|s| s.subtotal).unwrap_or(0.0)))?;
+    canvas.left_text(
+        120.0,
+        y,
+        BuiltinFont::Helvetica_Bold,
+        10.0,
+        "PENILAIAN PIMPINAN (20%)",
+    )?;
+    canvas.left_text(
+        660.0,
+        y,
+        BuiltinFont::Helvetica_Bold,
+        10.0,
+        &fmt_id(LEADERSHIP_CAP),
+    )?;
+    canvas.left_text(
+        750.0,
+        y,
+        BuiltinFont::Helvetica_Bold,
+        10.0,
+        &fmt_id(
+            context
+                .component_sections
+                .get(2)
+                .map(|s| s.subtotal)
+                .unwrap_or(0.0),
+        ),
+    )?;
     y -= 16.0;
 
     // Final total row
     canvas.left_text(350.0, y, BuiltinFont::Helvetica_Bold, 10.5, "NILAI AKHIR")?;
-    canvas.left_text(660.0, y, BuiltinFont::Helvetica_Bold, 10.5, &fmt_id(TOTAL_CAP))?;
-    canvas.left_text(750.0, y, BuiltinFont::Helvetica_Bold, 10.5, &fmt_id(context.total_score))?;
+    canvas.left_text(
+        660.0,
+        y,
+        BuiltinFont::Helvetica_Bold,
+        10.5,
+        &fmt_id(TOTAL_CAP),
+    )?;
+    canvas.left_text(
+        750.0,
+        y,
+        BuiltinFont::Helvetica_Bold,
+        10.5,
+        &fmt_id(context.total_score),
+    )?;
     y -= 40.0;
 
     // Official signature section
-    canvas.right_text(792.0, y, BuiltinFont::Helvetica, 10.0, "Plt. KEPALA DINAS SOSIAL")?;
+    canvas.right_text(
+        792.0,
+        y,
+        BuiltinFont::Helvetica,
+        10.0,
+        "Plt. KEPALA DINAS SOSIAL",
+    )?;
     y -= 11.0;
-    canvas.right_text(792.0, y, BuiltinFont::Helvetica, 10.0, "PROVINSI KALIMANTAN SELATAN")?;
+    canvas.right_text(
+        792.0,
+        y,
+        BuiltinFont::Helvetica,
+        10.0,
+        "PROVINSI KALIMANTAN SELATAN",
+    )?;
     y -= 55.0;
-    canvas.right_text(792.0, y, BuiltinFont::Helvetica_Bold, 10.0, "MUHAMMADUN, A.KS, M.I.Kom")?;
+    canvas.right_text(
+        792.0,
+        y,
+        BuiltinFont::Helvetica_Bold,
+        10.0,
+        "MUHAMMADUN, A.KS, M.I.Kom",
+    )?;
 
     Ok(())
 }
