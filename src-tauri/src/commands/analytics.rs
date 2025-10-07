@@ -2,7 +2,9 @@ use crate::db::models::{Competency, Dataset, Employee, Score};
 use crate::AppState;
 use serde::{Deserialize, Serialize};
 use sqlx::{QueryBuilder, SqlitePool};
+use std::str::FromStr;
 use tauri::State;
+use unicode_normalization::UnicodeNormalization;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScoreDistribution {
@@ -32,6 +34,7 @@ pub struct DatasetStats {
 pub struct EmployeeWithStats {
     #[serde(flatten)]
     pub employee: Employee,
+    pub position_status: String,
     pub average_score: f64,
     pub score_count: i64,
 }
@@ -42,9 +45,108 @@ pub struct EmployeeListResult {
     pub total_count: i64,
 }
 
+const STAFF_KEYWORDS: [&str; 2] = ["staff", "staf"];
+const ESELON_KEYWORDS: [&str; 14] = [
+    "eselon",
+    "kepala",
+    "sekretaris",
+    "kabid",
+    "kabag",
+    "kasubag",
+    "kepala seksi",
+    "kasi",
+    "koordinator",
+    "pengawas",
+    "sub bagian",
+    "subbagian",
+    "subbidang",
+    "sub bidang",
+];
+
+const ROLE_ORDER_EXPR: &str =
+    "LOWER(REPLACE(REPLACE(REPLACE(TRIM(IFNULL(e.jabatan, '') || ' ' || IFNULL(e.sub_jabatan, '')), '.', ' '), ',', ' '), '/', ' '))";
+
+fn sanitize_text(value: &str) -> String {
+    let decomposed: String = value
+        .nfkd()
+        .filter(|ch| !matches!(ch, '\u{0300}'..='\u{036f}'))
+        .collect();
+
+    decomposed
+        .to_lowercase()
+        .chars()
+        .map(|ch| if ch.is_ascii_alphabetic() || ch.is_ascii_whitespace() { ch } else { ' ' })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn derive_position_status(jabatan: Option<&str>, sub_jabatan: Option<&str>, gol: Option<&str>) -> String {
+    let combined = format!("{} {}", jabatan.unwrap_or_default(), sub_jabatan.unwrap_or_default());
+    let normalized = sanitize_text(&combined);
+
+    if !normalized.is_empty() {
+        if STAFF_KEYWORDS.iter().any(|keyword| normalized.contains(keyword)) {
+            return "Staff".to_string();
+        }
+        if ESELON_KEYWORDS.iter().any(|keyword| normalized.contains(keyword)) {
+            return "Eselon".to_string();
+        }
+    }
+
+    let gol_value = gol.unwrap_or_default().trim().to_uppercase();
+    if gol_value.starts_with("IV") {
+        "Eselon".to_string()
+    } else {
+        "Staff".to_string()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum EmployeeSortField {
+    Name,
+    Nip,
+    Jabatan,
+    Status,
+    AverageScore,
+    ScoreCount,
+    CreatedAt,
+}
+
+impl EmployeeSortField {
+    fn order_expression(self) -> &'static str {
+        match self {
+            Self::Name => "LOWER(e.name)",
+            Self::Nip => "LOWER(IFNULL(e.nip, ''))",
+            Self::Jabatan => ROLE_ORDER_EXPR,
+            Self::Status => "position_status",
+            Self::AverageScore => "average_score",
+            Self::ScoreCount => "score_count",
+            Self::CreatedAt => "e.created_at",
+        }
+    }
+}
+
+impl FromStr for EmployeeSortField {
+    type Err = ();
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "name" => Ok(Self::Name),
+            "nip" => Ok(Self::Nip),
+            "jabatan" => Ok(Self::Jabatan),
+            "status" => Ok(Self::Status),
+            "average_score" => Ok(Self::AverageScore),
+            "score_count" => Ok(Self::ScoreCount),
+            "created_at" => Ok(Self::CreatedAt),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScoreWithCompetency {
-    #[serde(flatten)]
     pub score: Score,
     pub competency: Competency,
 }
@@ -317,10 +419,8 @@ pub async fn get_dataset_stats(
     state: State<'_, AppState>,
     dataset_id: i64,
 ) -> Result<DatasetStats, String> {
-    let db_lock = state.db.lock().await;
-    let db = db_lock.as_ref().ok_or("Database not initialized")?;
-    let pool = &db.pool;
-    compute_dataset_stats(pool, dataset_id)
+    let pool = state.pool.clone();
+    compute_dataset_stats(&pool, dataset_id)
         .await
         .map_err(|e| format!("Failed to compute dataset stats: {}", e))
 }
@@ -332,43 +432,101 @@ pub async fn list_employees(
     search: Option<String>,
     limit: Option<i64>,
     offset: Option<i64>,
+    sort_by: Option<String>,
+    sort_direction: Option<String>,
 ) -> Result<EmployeeListResult, String> {
-    let db_lock = state.db.lock().await;
-    let db = db_lock.as_ref().ok_or("Database not initialized")?;
-    let pool = &db.pool;
-    let limit = limit.unwrap_or(50);
-    let offset = offset.unwrap_or(0);
+    let pool = state.pool.clone();
+    let limit = limit.unwrap_or(50).clamp(1, 500);
+    let offset = offset.unwrap_or(0).max(0);
 
-    let mut employees_query = QueryBuilder::new(
-        "SELECT
-            e.id, e.name, e.nip, e.gol, e.jabatan, e.sub_jabatan, e.created_at, e.updated_at,
-            COALESCE(AVG(s.numeric_value), 0.0) as average_score,
-            COUNT(s.id) as score_count
-        FROM dataset_employees de
-        JOIN employees e ON e.id = de.employee_id
-        LEFT JOIN scores s ON s.employee_id = e.id AND s.dataset_id = de.dataset_id AND s.numeric_value IS NOT NULL
-        WHERE de.dataset_id = ",
+    let sort_field = sort_by
+        .as_deref()
+        .and_then(|value| EmployeeSortField::from_str(value).ok())
+        .unwrap_or(EmployeeSortField::Name);
+    let sort_direction_str = match sort_direction.as_deref() {
+        Some(direction) if direction.eq_ignore_ascii_case("desc") => "DESC",
+        _ => "ASC",
+    };
+
+    let staff_condition = STAFF_KEYWORDS
+        .iter()
+        .map(|keyword| format!("instr({role}, '{keyword}') > 0", role = ROLE_ORDER_EXPR, keyword = keyword))
+        .collect::<Vec<_>>()
+        .join(" OR ");
+    let staff_condition = if staff_condition.is_empty() {
+        "0".to_string()
+    } else {
+        staff_condition
+    };
+
+    let eselon_condition = ESELON_KEYWORDS
+        .iter()
+        .map(|keyword| format!("instr({role}, '{keyword}') > 0", role = ROLE_ORDER_EXPR, keyword = keyword))
+        .collect::<Vec<_>>()
+        .join(" OR ");
+    let eselon_condition = if eselon_condition.is_empty() {
+        "0".to_string()
+    } else {
+        eselon_condition
+    };
+
+    let position_case = format!(
+        "CASE
+            WHEN {staff} THEN 'Staff'
+            WHEN {eselon} THEN 'Eselon'
+            WHEN UPPER(IFNULL(e.gol, '')) LIKE 'IV%' THEN 'Eselon'
+            ELSE 'Staff'
+        END as position_status",
+        staff = staff_condition,
+        eselon = eselon_condition,
     );
 
+    let select_clause = format!(
+        "SELECT
+            e.id,
+            e.name,
+            e.nip,
+            e.gol,
+            e.jabatan,
+            e.sub_jabatan,
+            e.created_at,
+            e.updated_at,
+            {position_case},
+            COALESCE(AVG(s.numeric_value), 0.0) as average_score,
+            COUNT(s.id) as score_count
+        FROM employees e
+        LEFT JOIN scores s ON s.employee_id = e.id AND s.dataset_id = ",
+        position_case = position_case,
+    );
+
+    let mut employees_query = QueryBuilder::new(select_clause);
     employees_query.push_bind(dataset_id);
+    employees_query.push(" AND s.numeric_value IS NOT NULL");
 
     if let Some(search_term) = &search {
         let normalized = search_term.trim().to_lowercase();
         if !normalized.is_empty() {
-            employees_query.push(" AND (");
+            employees_query.push(" WHERE (");
             employees_query.push("LOWER(e.name) LIKE ");
             employees_query.push_bind(format!("%{}%", normalized));
             employees_query.push(" OR LOWER(IFNULL(e.nip, '')) LIKE ");
+            employees_query.push_bind(format!("%{}%", normalized));
+            employees_query.push(" OR LOWER(IFNULL(e.jabatan, '')) LIKE ");
+            employees_query.push_bind(format!("%{}%", normalized));
+            employees_query.push(" OR LOWER(IFNULL(e.sub_jabatan, '')) LIKE ");
             employees_query.push_bind(format!("%{}%", normalized));
             employees_query.push(")");
         }
     }
 
     employees_query.push(
-        " GROUP BY e.id, e.name, e.nip, e.gol, e.jabatan, e.sub_jabatan, e.created_at, e.updated_at
-          ORDER BY e.name
-          LIMIT ",
+        " GROUP BY e.id, e.name, e.nip, e.gol, e.jabatan, e.sub_jabatan, e.created_at, e.updated_at, position_status",
     );
+    employees_query.push(" ORDER BY ");
+    employees_query.push(sort_field.order_expression());
+    employees_query.push(" ");
+    employees_query.push(sort_direction_str);
+    employees_query.push(", LOWER(e.name) ASC LIMIT ");
     employees_query.push_bind(limit);
     employees_query.push(" OFFSET ");
     employees_query.push_bind(offset);
@@ -382,18 +540,37 @@ pub async fn list_employees(
         Option<String>,
         String,
         String,
+        String,
         f64,
         i64,
     )> = employees_query
         .build_query_as()
-        .fetch_all(pool)
+        .fetch_all(&pool)
         .await
         .map_err(|e| format!("Failed to fetch employees: {}", e))?;
 
     let employees_with_stats: Vec<EmployeeWithStats> = employees
         .into_iter()
         .map(
-            |(id, name, nip, gol, jabatan, sub_jabatan, created_at, updated_at, avg, count)| {
+            |(
+                id,
+                name,
+                nip,
+                gol,
+                jabatan,
+                sub_jabatan,
+                created_at,
+                updated_at,
+                position_status,
+                avg,
+                count,
+            )| {
+                let status = if matches!(position_status.as_str(), "Staff" | "Eselon") {
+                    position_status
+                } else {
+                    derive_position_status(jabatan.as_deref(), sub_jabatan.as_deref(), gol.as_deref())
+                };
+
                 EmployeeWithStats {
                     employee: Employee {
                         id,
@@ -405,6 +582,7 @@ pub async fn list_employees(
                         created_at: created_at.parse().unwrap_or_default(),
                         updated_at: updated_at.parse().unwrap_or_default(),
                     },
+                    position_status: status,
                     average_score: avg,
                     score_count: count,
                 }
@@ -412,20 +590,19 @@ pub async fn list_employees(
         )
         .collect();
 
-    let mut count_query = QueryBuilder::new(
-        "SELECT COUNT(*) FROM dataset_employees de
-         JOIN employees e ON e.id = de.employee_id
-         WHERE de.dataset_id = ",
-    );
-    count_query.push_bind(dataset_id);
+    let mut count_query = QueryBuilder::new("SELECT COUNT(*) FROM employees e");
 
     if let Some(search_term) = &search {
         let normalized = search_term.trim().to_lowercase();
         if !normalized.is_empty() {
-            count_query.push(" AND (");
+            count_query.push(" WHERE (");
             count_query.push("LOWER(e.name) LIKE ");
             count_query.push_bind(format!("%{}%", normalized));
             count_query.push(" OR LOWER(IFNULL(e.nip, '')) LIKE ");
+            count_query.push_bind(format!("%{}%", normalized));
+            count_query.push(" OR LOWER(IFNULL(e.jabatan, '')) LIKE ");
+            count_query.push_bind(format!("%{}%", normalized));
+            count_query.push(" OR LOWER(IFNULL(e.sub_jabatan, '')) LIKE ");
             count_query.push_bind(format!("%{}%", normalized));
             count_query.push(")");
         }
@@ -433,7 +610,7 @@ pub async fn list_employees(
 
     let total_count: i64 = count_query
         .build_query_scalar()
-        .fetch_one(pool)
+        .fetch_one(&pool)
         .await
         .map_err(|e| format!("Failed to count employees: {}", e))?;
 
@@ -449,11 +626,9 @@ pub async fn get_employee_performance(
     dataset_id: i64,
     employee_id: i64,
 ) -> Result<EmployeePerformance, String> {
-    let db_lock = state.db.lock().await;
-    let db = db_lock.as_ref().ok_or("Database not initialized")?;
-    let pool = &db.pool;
+    let pool = state.pool.clone();
 
-    compute_employee_performance(pool, dataset_id, employee_id)
+    compute_employee_performance(&pool, dataset_id, employee_id)
         .await
         .map_err(|e| format!("Failed to load employee performance: {}", e))
 }
@@ -464,14 +639,12 @@ pub async fn compare_datasets(
     base_dataset_id: i64,
     comparison_dataset_id: i64,
 ) -> Result<DatasetComparison, String> {
-    let db_lock = state.db.lock().await;
-    let db = db_lock.as_ref().ok_or("Database not initialized")?;
-    let pool = &db.pool;
+    let pool = state.pool.clone();
 
-    let base_stats = compute_dataset_stats(pool, base_dataset_id)
+    let base_stats = compute_dataset_stats(&pool, base_dataset_id)
         .await
         .map_err(|e| format!("Failed to compute base dataset stats: {}", e))?;
-    let comparison_stats = compute_dataset_stats(pool, comparison_dataset_id)
+    let comparison_stats = compute_dataset_stats(&pool, comparison_dataset_id)
         .await
         .map_err(|e| format!("Failed to compute comparison dataset stats: {}", e))?;
 

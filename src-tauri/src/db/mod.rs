@@ -1,4 +1,4 @@
-use sqlx::{migrate::MigrateDatabase, sqlite::SqlitePool, SqliteConnection};
+use sqlx::{migrate::MigrateDatabase, sqlite::SqlitePool};
 use std::path::PathBuf;
 
 pub mod models;
@@ -25,9 +25,5 @@ impl Database {
         sqlx::migrate!("./migrations").run(&pool).await?;
 
         Ok(Self { pool })
-    }
-
-    pub async fn get_connection(&self) -> Result<SqliteConnection, sqlx::Error> {
-        self.pool.acquire().await.map(|conn| conn.detach())
     }
 }

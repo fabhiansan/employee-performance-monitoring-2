@@ -31,4 +31,5 @@ chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2.0"
 rust_xlsxwriter = { version = "0.68", default-features = false, features = ["chrono"] }
 pdf-canvas = "0.7"
+unicode-normalization = "0.1"
 

@@ -318,16 +318,36 @@ impl CsvParser {
         names
     }
 
+    fn normalize_header(s: &str) -> String {
+        Self::clean_field(s)
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect::<String>()
+            .to_lowercase()
+    }
+
+    fn find_header_pos(headers: &StringRecord, names: &[&str]) -> Option<usize> {
+        let target_norms: Vec<String> = names
+            .iter()
+            .map(|n| n.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase())
+            .collect();
+        for (idx, h) in headers.iter().enumerate() {
+            let norm = Self::normalize_header(h);
+            if target_norms.iter().any(|t| *t == norm) {
+                return Some(idx);
+            }
+        }
+        None
+    }
+
     fn get_field(
         record: &StringRecord,
         headers: &StringRecord,
         names: &[&str],
     ) -> Result<String, CsvParseError> {
-        for name in names {
-            if let Some(pos) = headers.iter().position(|h| h.eq_ignore_ascii_case(name)) {
-                if let Some(value) = record.get(pos) {
-                    return Ok(value.to_string());
-                }
+        if let Some(pos) = Self::find_header_pos(headers, names) {
+            if let Some(value) = record.get(pos) {
+                return Ok(value.to_string());
             }
         }
         Err(CsvParseError::InvalidFormat(format!(
@@ -341,13 +361,11 @@ impl CsvParser {
         headers: &StringRecord,
         names: &[&str],
     ) -> Option<String> {
-        for name in names {
-            if let Some(pos) = headers.iter().position(|h| h.eq_ignore_ascii_case(name)) {
-                if let Some(value) = record.get(pos) {
-                    let cleaned = Self::clean_field(value);
-                    if !cleaned.is_empty() {
-                        return Some(cleaned);
-                    }
+        if let Some(pos) = Self::find_header_pos(headers, names) {
+            if let Some(value) = record.get(pos) {
+                let cleaned = Self::clean_field(value);
+                if !cleaned.is_empty() {
+                    return Some(cleaned);
                 }
             }
         }

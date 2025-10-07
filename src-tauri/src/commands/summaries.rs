@@ -16,11 +16,9 @@ pub async fn generate_employee_summary(
     dataset_id: i64,
     employee_id: i64,
 ) -> Result<GeneratedSummary, String> {
-    let db_lock = state.db.lock().await;
-    let db = db_lock.as_ref().ok_or("Database not initialized")?;
-    let pool = &db.pool;
+    let pool = state.pool.clone();
 
-    let performance = compute_employee_performance(pool, dataset_id, employee_id)
+    let performance = compute_employee_performance(&pool, dataset_id, employee_id)
         .await
         .map_err(|e| format!("Failed to generate summary: {}", e))?;
 
@@ -139,13 +137,11 @@ pub async fn get_employee_summary(
     state: State<'_, AppState>,
     employee_id: i64,
 ) -> Result<Option<Summary>, String> {
-    let db_lock = state.db.lock().await;
-    let db = db_lock.as_ref().ok_or("Database not initialized")?;
-    let pool = &db.pool;
+    let pool = state.pool.clone();
 
     let summary = sqlx::query_as::<_, Summary>("SELECT * FROM summaries WHERE employee_id = ?")
         .bind(employee_id)
-        .fetch_optional(pool)
+        .fetch_optional(&pool)
         .await
         .map_err(|e| format!("Failed to load summary: {}", e))?;
 
@@ -158,9 +154,7 @@ pub async fn save_employee_summary(
     employee_id: i64,
     content: String,
 ) -> Result<Summary, String> {
-    let db_lock = state.db.lock().await;
-    let db = db_lock.as_ref().ok_or("Database not initialized")?;
-    let pool = &db.pool;
+    let pool = state.pool.clone();
 
     let summary = sqlx::query_as::<_, Summary>(
         r#"
@@ -174,7 +168,7 @@ pub async fn save_employee_summary(
     )
     .bind(employee_id)
     .bind(content)
-    .fetch_one(pool)
+    .fetch_one(&pool)
     .await
     .map_err(|e| format!("Failed to save summary: {}", e))?;
 
@@ -188,18 +182,16 @@ pub async fn export_employee_summary_pdf(
     employee_id: i64,
     file_path: String,
 ) -> Result<(), String> {
-    let db_lock = state.db.lock().await;
-    let db = db_lock.as_ref().ok_or("Database not initialized")?;
-    let pool = &db.pool;
+    let pool = state.pool.clone();
 
-    let performance = compute_employee_performance(pool, dataset_id, employee_id)
+    let performance = compute_employee_performance(&pool, dataset_id, employee_id)
         .await
         .map_err(|e| format!("Failed to prepare export: {}", e))?;
 
     let content = if let Some(existing) =
         sqlx::query_as::<_, Summary>("SELECT * FROM summaries WHERE employee_id = ?")
             .bind(employee_id)
-            .fetch_optional(pool)
+            .fetch_optional(&pool)
             .await
             .map_err(|e| format!("Failed to load summary for export: {}", e))?
     {

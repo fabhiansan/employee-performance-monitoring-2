@@ -2,12 +2,10 @@ mod commands;
 mod csv_parser;
 mod db;
 
-use std::sync::Arc;
 use tauri::Manager;
-use tokio::sync::Mutex;
 
 pub struct AppState {
-    pub db: Arc<Mutex<Option<db::Database>>>,
+    pub pool: sqlx::SqlitePool,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -18,30 +16,19 @@ pub fn run() {
         .setup(|app| {
             // Initialize database
             let app_dir = app.path().app_data_dir().expect("failed to get app dir");
-            std::fs::create_dir_all(&app_dir).expect("failed to create app dir");
+            std::fs::create_dir_all(&app_dir)
+                .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })?;
 
             let db_path = app_dir.join("epa.db");
 
-            let state = AppState {
-                db: Arc::new(Mutex::new(None)),
-            };
+            let database = tauri::async_runtime::block_on(db::Database::new(db_path))
+                .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })?;
+
+            let db::Database { pool } = database;
+
+            let state = AppState { pool };
 
             app.manage(state);
-
-            // Initialize database in background
-            let db_clone = app.state::<AppState>().db.clone();
-            tauri::async_runtime::spawn(async move {
-                match db::Database::new(db_path).await {
-                    Ok(database) => {
-                        let mut db_lock = db_clone.lock().await;
-                        *db_lock = Some(database);
-                        println!("Database initialized successfully");
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to initialize database: {}", e);
-                    }
-                }
-            });
 
             Ok(())
         })
@@ -53,7 +40,15 @@ pub fn run() {
             commands::dataset::list_datasets,
             commands::dataset::get_dataset,
             commands::dataset::delete_dataset,
-            commands::import::import_dataset,
+            commands::dataset::update_dataset,
+            commands::dataset::merge_datasets,
+            commands::employee::list_all_employees,
+            commands::employee::bulk_delete_employees,
+            commands::employee::bulk_update_employees,
+            commands::import::import_employees,
+            commands::import::import_performance_dataset,
+            commands::import::import_performance_into_dataset,
+            commands::import::append_dataset_employees,
             commands::import::get_default_rating_mappings,
             commands::import::validate_import_data,
             commands::analytics::get_dataset_stats,
@@ -65,6 +60,7 @@ pub fn run() {
             commands::summaries::save_employee_summary,
             commands::summaries::export_employee_summary_pdf,
             commands::export::export_dataset,
+            commands::report::export_employee_report_pdf,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

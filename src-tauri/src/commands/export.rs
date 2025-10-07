@@ -21,18 +21,16 @@ pub async fn export_dataset(
     format: String,
     file_path: String,
 ) -> Result<(), String> {
-    let db_lock = state.db.lock().await;
-    let db = db_lock.as_ref().ok_or("Database not initialized")?;
-    let pool = &db.pool;
+    let pool = state.pool.clone();
 
-    let export_data = collect_dataset_data(pool, dataset_id)
+    let export_data = collect_dataset_data(&pool, dataset_id)
         .await
         .map_err(|e| format!("Failed to collect dataset: {}", e))?;
 
     match format.as_str() {
         "csv" => export_csv(&export_data, &file_path),
         "xlsx" => export_xlsx(&export_data, &file_path),
-        "pdf" => export_pdf(pool, &export_data, &file_path).await,
+        "pdf" => export_pdf(&pool, &export_data, &file_path).await,
         other => Err(format!("Unsupported export format: {}", other)),
     }
 }

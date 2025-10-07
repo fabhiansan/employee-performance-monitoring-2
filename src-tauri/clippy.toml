@@ -1,0 +1,10 @@
+# Clippy configuration for the project
+
+# Maximum number of lines a function or method can have
+too-many-lines-threshold = 600
+
+# Maximum cognitive complexity a function can have
+cognitive-complexity-threshold = 20
+
+# Maximum number of arguments a function or method can have
+too-many-arguments-threshold = 7

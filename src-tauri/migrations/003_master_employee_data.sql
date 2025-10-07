@@ -1,8 +1,6 @@
 -- Restructure employees into master data and capture dataset associations
 PRAGMA foreign_keys = OFF;
 
-BEGIN TRANSACTION;
-
 -- Preserve existing employees as employees_old for migration
 ALTER TABLE employees RENAME TO employees_old;
 
@@ -78,7 +76,5 @@ CREATE INDEX idx_dataset_employees_employee ON dataset_employees(employee_id);
 CREATE INDEX idx_scores_employee ON scores(employee_id);
 CREATE INDEX idx_scores_dataset ON scores(dataset_id);
 CREATE INDEX idx_scores_competency ON scores(competency_id);
-
-COMMIT;
 
 PRAGMA foreign_keys = ON;
